@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import {
   Markdown,
   definePluginApp,
@@ -16,6 +16,34 @@ import { cn } from "@/lib/utils";
 import type { rpcContract } from "./server";
 
 const PANEL_PATH = "docs";
+const LIST_WIDTH_KEY = "vault-list-width";
+const LIST_WIDTH_DEFAULT = 320;
+const LIST_WIDTH_MIN = 200;
+const LIST_WIDTH_MAX = 560;
+const LIST_WIDTH_STEP = 16;
+
+function clampListWidth(width: number, max = LIST_WIDTH_MAX): number {
+  const ceiling = Math.max(LIST_WIDTH_MIN, max);
+  return Math.min(ceiling, Math.max(LIST_WIDTH_MIN, Math.round(width)));
+}
+
+function readStoredListWidth(): number {
+  try {
+    const parsed = Number(localStorage.getItem(LIST_WIDTH_KEY));
+    if (!Number.isFinite(parsed)) return LIST_WIDTH_DEFAULT;
+    return clampListWidth(parsed);
+  } catch {
+    return LIST_WIDTH_DEFAULT;
+  }
+}
+
+function storeListWidth(width: number): void {
+  try {
+    localStorage.setItem(LIST_WIDTH_KEY, String(width));
+  } catch {
+    // ignore quota / private mode
+  }
+}
 
 type Vault = {
   id: string;
@@ -125,6 +153,59 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
   const navigate = useBbNavigate();
   const compact = useIsCompactViewport();
   const route = decodeRoute(subPath);
+  const [listWidth, setListWidth] = useState(readStoredListWidth);
+  const [resizing, setResizing] = useState(false);
+  const resizeDrag = useRef<{ startX: number; startWidth: number; max: number } | null>(null);
+
+  const applyListWidth = useCallback((width: number, max?: number) => {
+    const next = clampListWidth(width, max);
+    setListWidth(next);
+    storeListWidth(next);
+    return next;
+  }, []);
+
+  function onResizePointerDown(event: PointerEvent<HTMLDivElement>) {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    const sidebar = event.currentTarget.parentElement;
+    const panel = sidebar?.parentElement;
+    const startWidth = sidebar?.getBoundingClientRect().width ?? listWidth;
+    const max = panel ? panel.clientWidth - LIST_WIDTH_MIN : LIST_WIDTH_MAX;
+    resizeDrag.current = { startX: event.clientX, startWidth, max };
+    setResizing(true);
+  }
+
+  function onResizePointerMove(event: PointerEvent<HTMLDivElement>) {
+    const drag = resizeDrag.current;
+    if (drag === null) return;
+    applyListWidth(drag.startWidth + (event.clientX - drag.startX), drag.max);
+  }
+
+  function onResizePointerUp(event: PointerEvent<HTMLDivElement>) {
+    if (resizeDrag.current === null) return;
+    resizeDrag.current = null;
+    setResizing(false);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  }
+
+  function onResizeKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    if (event.key === "ArrowLeft") {
+      event.preventDefault();
+      applyListWidth(listWidth - LIST_WIDTH_STEP);
+    } else if (event.key === "ArrowRight") {
+      event.preventDefault();
+      applyListWidth(listWidth + LIST_WIDTH_STEP);
+    } else if (event.key === "Home") {
+      event.preventDefault();
+      applyListWidth(LIST_WIDTH_MIN);
+    } else if (event.key === "End") {
+      event.preventDefault();
+      applyListWidth(LIST_WIDTH_MAX);
+    }
+  }
 
   const [vaults, setVaults] = useState<Vault[]>(() => rememberedVaults);
   const [indexByVault, setIndexByVault] = useState<Record<string, DocEntry[]>>(() => ({
@@ -251,7 +332,7 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
   }, [activePath, rpc, vaultId, viewingFile]);
 
   const listPane = (
-    <div className="flex min-h-0 w-full flex-col border-border md:w-80 md:shrink-0 md:border-r">
+    <div className={cn("flex min-h-0 w-full flex-col", compact ? "" : "h-full border-r border-border")}>
       <div className="flex gap-1 overflow-x-auto border-b border-border px-2 py-2">
         {vaults.map((vault) => {
           const selected = vault.id === vaultId;
@@ -394,8 +475,36 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
   const showDetail = !compact || viewingFile;
 
   return (
-    <div className="flex h-full min-h-0 bg-background text-foreground">
-      {showList ? listPane : null}
+    <div className={cn("flex h-full min-h-0 bg-background text-foreground", resizing ? "select-none" : "")}>
+      {showList ? (
+        compact ? (
+          listPane
+        ) : (
+          <div className="relative flex min-h-0 max-w-[70%] shrink-0" style={{ width: listWidth }}>
+            {listPane}
+            <div
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="사이드바 너비"
+              aria-valuemin={LIST_WIDTH_MIN}
+              aria-valuemax={LIST_WIDTH_MAX}
+              aria-valuenow={listWidth}
+              tabIndex={0}
+              className={cn(
+                "absolute inset-y-0 right-0 z-10 w-3 translate-x-1/2 cursor-col-resize touch-none",
+                "after:absolute after:inset-y-0 after:left-1/2 after:w-px after:-translate-x-1/2",
+                resizing ? "after:bg-primary" : "hover:after:bg-border",
+              )}
+              onPointerDown={onResizePointerDown}
+              onPointerMove={onResizePointerMove}
+              onPointerUp={onResizePointerUp}
+              onPointerCancel={onResizePointerUp}
+              onDoubleClick={() => applyListWidth(LIST_WIDTH_DEFAULT)}
+              onKeyDown={onResizeKeyDown}
+            />
+          </div>
+        )
+      ) : null}
       {showDetail ? detailPane : null}
     </div>
   );
