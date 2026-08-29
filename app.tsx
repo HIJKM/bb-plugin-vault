@@ -323,10 +323,7 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
                     goTo(vaultId, item.path);
                   }}
                 >
-                  <Icon
-                    name={item.kind === "directory" ? "Folder" : "FileText"}
-                    className="size-4 shrink-0"
-                  />
+                  <Icon name="Folder" className="size-4 shrink-0" />
                   <span className="min-w-0 flex-1 truncate text-sm">
                     {item.kind === "file" ? fileLabel(item.name) : item.name}
                   </span>
