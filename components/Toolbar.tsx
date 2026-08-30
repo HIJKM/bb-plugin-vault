@@ -12,15 +12,19 @@ import { cn } from "@/lib/utils";
 const ACTION_BUTTON_CLASS = "h-7 w-7 shrink-0 p-0";
 const POPOVER_WIDTH = 224;
 
-function placePopover(anchor: HTMLElement): { top: number; left: number; width: number } {
+function placePopover(
+  anchor: HTMLElement,
+  popover?: HTMLElement | null,
+): { top: number; left: number; width: number } {
   const rect = anchor.getBoundingClientRect();
   const width = Math.min(POPOVER_WIDTH, Math.max(160, window.innerWidth - 16));
+  const height = popover?.offsetHeight ?? 88;
+  const gap = 6;
   const maxLeft = window.innerWidth - width - 8;
-  const left = Math.min(Math.max(8, rect.right - width), Math.max(8, maxLeft));
-  const height = 88;
-  let top = rect.bottom - 2;
+  const left = Math.min(Math.max(8, rect.left - width - gap), Math.max(8, maxLeft));
+  let top = rect.top;
   if (top + height > window.innerHeight - 8) {
-    top = Math.max(8, rect.top - height + 2);
+    top = Math.max(8, window.innerHeight - 8 - height);
   }
   return { top, left, width };
 }
@@ -61,7 +65,7 @@ export function Toolbar({
   useLayoutEffect(() => {
     if (!filterOpen) return;
     const anchor = filterWrapRef.current;
-    if (anchor !== null) setPopoverBox(placePopover(anchor));
+    if (anchor !== null) setPopoverBox(placePopover(anchor, filterPopoverRef.current));
   }, [filterOpen]);
 
   useLayoutEffect(() => {
@@ -82,7 +86,7 @@ export function Toolbar({
     }
     function onReposition() {
       const anchor = filterWrapRef.current;
-      if (anchor !== null) setPopoverBox(placePopover(anchor));
+      if (anchor !== null) setPopoverBox(placePopover(anchor, filterPopoverRef.current));
     }
     document.addEventListener("pointerdown", onPointerDown);
     window.addEventListener("resize", onReposition);
