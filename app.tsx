@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent } from "react";
 import {
   Markdown,
   definePluginApp,
@@ -22,6 +22,7 @@ import { isImageFileName } from "@/lib/image-file";
 import { cn } from "@/lib/utils";
 import { publishVaults, rememberedVaults, subscribeVaults, type Vault } from "@/lib/vault-list";
 import { parseFrontmatterFields, splitMarkdownFrontmatter, type FrontmatterField } from "@/lib/frontmatter";
+import { listScrollKey, readListScroll, writeListScroll } from "@/lib/session-list-scroll";
 import { readSessionRoute, writeSessionRoute } from "@/lib/session-route";
 import { rewriteVaultMarkdown } from "@/lib/vault-markdown";
 import { parseVaultLinkHref } from "@/lib/wiki-links";
@@ -207,6 +208,7 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
   const [listWidth, setListWidth] = useState(readStoredListWidth);
   const [resizing, setResizing] = useState(false);
   const resizeDrag = useRef<{ startX: number; startWidth: number; max: number } | null>(null);
+  const listScrollerRef = useRef<HTMLDivElement>(null);
 
   const applyListWidth = useCallback((width: number, max?: number) => {
     const next = clampListWidth(width, max);
@@ -305,6 +307,17 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
     () => filterDocs(index, listFolder, query),
     [index, listFolder, query],
   );
+  const showList = !compact || !viewingFile;
+  const folderScrollKey = listScrollKey(vaultId, listFolder);
+
+  useLayoutEffect(() => {
+    const el = listScrollerRef.current;
+    if (el === null) return;
+    if (query.trim() === "") el.scrollTop = readListScroll(folderScrollKey);
+    return () => {
+      if (query.trim() === "") writeListScroll(folderScrollKey, el.scrollTop);
+    };
+  }, [folderScrollKey, query, showList, visibleItems.length]);
 
   const goTo = useCallback(
     (nextVault: string, nextPath: string, replace = false) => {
@@ -515,7 +528,14 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
         onQueryChange={setQuery}
         filterFocusTick={filterFocusTick}
       />
-      <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain">
+      <div
+        ref={listScrollerRef}
+        className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain"
+        onScroll={(event) => {
+          if (query.trim() !== "") return;
+          writeListScroll(folderScrollKey, event.currentTarget.scrollTop);
+        }}
+      >
         {loadingVaults || (loadingIndex && items.length === 0) ? (
           <p className="p-4 text-sm text-muted-foreground">불러오는 중…</p>
         ) : null}
@@ -640,7 +660,6 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
     </div>
   );
 
-  const showList = !compact || !viewingFile;
   const showDetail = !compact || viewingFile;
 
   return (
