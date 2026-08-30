@@ -139,29 +139,31 @@ function MentionLine({
 }) {
   if (mentions.length === 0) return null;
   return (
-    <div className="mt-1.5 flex flex-wrap items-baseline gap-x-2 gap-y-1 text-xs">
-      <span className="shrink-0 text-muted-foreground">{label}</span>
-      {mentions.map((mention) => {
-        const path = resolveWikiTarget(mention.target, index);
-        const text = mentionLabel(mention);
-        if (path === null || vaultId === null) {
+    <div className="mt-2">
+      <div className="text-xs font-medium text-muted-foreground">{label}</div>
+      <div className="mt-0.5 flex flex-wrap gap-x-2 gap-y-1 pl-3 text-xs font-normal">
+        {mentions.map((mention) => {
+          const path = resolveWikiTarget(mention.target, index);
+          const text = mentionLabel(mention);
+          if (path === null || vaultId === null) {
+            return (
+              <span key={mention.target} className="text-foreground/80">
+                {text}
+              </span>
+            );
+          }
           return (
-            <span key={mention.target} className="text-muted-foreground">
+            <button
+              key={mention.target}
+              type="button"
+              className="max-w-full truncate text-left font-normal text-primary hover:underline"
+              onClick={() => onOpen(vaultId, path)}
+            >
               {text}
-            </span>
+            </button>
           );
-        }
-        return (
-          <button
-            key={mention.target}
-            type="button"
-            className="max-w-full truncate text-left text-primary hover:underline"
-            onClick={() => onOpen(vaultId, path)}
-          >
-            {text}
-          </button>
-        );
-      })}
+        })}
+      </div>
     </div>
   );
 }
