@@ -18,8 +18,14 @@ import { useIsCompactViewport } from "@/components/ui/hooks/use-compact-viewport
 import { isImageFileName } from "@/lib/image-file";
 import { cn } from "@/lib/utils";
 import { publishVaults, rememberedVaults, subscribeVaults, type Vault } from "@/lib/vault-list";
+import {
+  frontmatterWikiMentions,
+  mentionLabel,
+  splitMarkdownFrontmatter,
+  type WikiMention,
+} from "@/lib/frontmatter";
 import { rewriteVaultMarkdown } from "@/lib/vault-markdown";
-import { parseVaultLinkHref } from "@/lib/wiki-links";
+import { parseVaultLinkHref, resolveWikiTarget } from "@/lib/wiki-links";
 import type { rpcContract } from "./server";
 
 const PANEL_PATH = "docs";
@@ -116,6 +122,48 @@ function fileLabel(pathOrName: string): string {
   const cut = pathOrName.lastIndexOf("/");
   const name = cut === -1 ? pathOrName : pathOrName.slice(cut + 1);
   return name.replace(/\.(md|markdown|html|htm|txt)$/iu, "");
+}
+
+function MentionLine({
+  label,
+  mentions,
+  index,
+  vaultId,
+  onOpen,
+}: {
+  label: string;
+  mentions: readonly WikiMention[];
+  index: readonly DocEntry[];
+  vaultId: string | null;
+  onOpen: (vaultId: string, path: string) => void;
+}) {
+  if (mentions.length === 0) return null;
+  return (
+    <div className="mt-1.5 flex flex-wrap items-baseline gap-x-2 gap-y-1 text-xs">
+      <span className="shrink-0 text-muted-foreground">{label}</span>
+      {mentions.map((mention) => {
+        const path = resolveWikiTarget(mention.target, index);
+        const text = mentionLabel(mention);
+        if (path === null || vaultId === null) {
+          return (
+            <span key={mention.target} className="text-muted-foreground">
+              {text}
+            </span>
+          );
+        }
+        return (
+          <button
+            key={mention.target}
+            type="button"
+            className="max-w-full truncate text-left text-primary hover:underline"
+            onClick={() => onOpen(vaultId, path)}
+          >
+            {text}
+          </button>
+        );
+      })}
+    </div>
+  );
 }
 
 const rememberedIndex: Record<string, DocEntry[]> = {};
@@ -270,12 +318,19 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
     : activePath;
   const index = vaultId === null ? [] : (indexByVault[vaultId] ?? []);
   const markdown = useMemo(() => {
-    if (doc === null || doc.kind !== "markdown") return "";
-    return rewriteVaultMarkdown(doc.content, {
-      entries: index,
-      docPath: doc.path,
-      previewBaseUrl,
-    });
+    if (doc === null || doc.kind !== "markdown") {
+      return { body: "", related: [] as WikiMention[], sources: [] as WikiMention[] };
+    }
+    const split = splitMarkdownFrontmatter(doc.content);
+    return {
+      body: rewriteVaultMarkdown(split.body, {
+        entries: index,
+        docPath: doc.path,
+        previewBaseUrl,
+      }),
+      related: split.frontmatter === null ? [] : frontmatterWikiMentions(split.frontmatter, "related"),
+      sources: split.frontmatter === null ? [] : frontmatterWikiMentions(split.frontmatter, "sources"),
+    };
   }, [doc, index, previewBaseUrl]);
   const items = useMemo(() => childrenOf(index, listFolder), [index, listFolder]);
   const visibleItems = useMemo(
@@ -560,6 +615,24 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
         <>
           <div className="border-b border-border px-4 py-3">
             <h1 className="truncate text-base font-medium">{fileLabel(doc.name)}</h1>
+            {doc.kind === "markdown" ? (
+              <>
+                <MentionLine
+                  label="관련"
+                  mentions={markdown.related}
+                  index={index}
+                  vaultId={vaultId}
+                  onOpen={goTo}
+                />
+                <MentionLine
+                  label="출처"
+                  mentions={markdown.sources}
+                  index={index}
+                  vaultId={vaultId}
+                  onOpen={goTo}
+                />
+              </>
+            ) : null}
           </div>
           {doc.kind === "image" ? (
             <ImagePreview url={doc.url} name={fileLabel(doc.name)} />
@@ -575,7 +648,7 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
             ) : doc.kind === "markdown" ? (
               <div className="flex w-full justify-center px-4 pt-6 sm:px-8 sm:pt-8">
                 <div className="w-full min-w-0 max-w-prose" onClickCapture={onWikiClick}>
-                  <Markdown content={markdown} />
+                  <Markdown content={markdown.body} />
                 </div>
               </div>
             ) : (
