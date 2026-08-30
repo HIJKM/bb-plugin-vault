@@ -18,7 +18,8 @@ import { useIsCompactViewport } from "@/components/ui/hooks/use-compact-viewport
 import { isImageFileName } from "@/lib/image-file";
 import { cn } from "@/lib/utils";
 import { publishVaults, rememberedVaults, subscribeVaults, type Vault } from "@/lib/vault-list";
-import { parseVaultLinkHref, rewriteWikiLinks } from "@/lib/wiki-links";
+import { rewriteVaultMarkdown } from "@/lib/vault-markdown";
+import { parseVaultLinkHref } from "@/lib/wiki-links";
 import type { rpcContract } from "./server";
 
 const PANEL_PATH = "docs";
@@ -257,6 +258,7 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
   const [loadingVaults, setLoadingVaults] = useState(() => rememberedVaults().length === 0);
   const [loadingIndex, setLoadingIndex] = useState(false);
   const [loadingDoc, setLoadingDoc] = useState(false);
+  const [previewBaseUrl, setPreviewBaseUrl] = useState<string | null>(null);
 
   const vaultId = route.vaultId ?? vaults[0]?.id ?? null;
   const activePath = route.path;
@@ -269,8 +271,12 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
   const index = vaultId === null ? [] : (indexByVault[vaultId] ?? []);
   const markdown = useMemo(() => {
     if (doc === null || doc.kind !== "markdown") return "";
-    return rewriteWikiLinks(doc.content, index);
-  }, [doc, index]);
+    return rewriteVaultMarkdown(doc.content, {
+      entries: index,
+      docPath: doc.path,
+      previewBaseUrl,
+    });
+  }, [doc, index, previewBaseUrl]);
   const items = useMemo(() => childrenOf(index, listFolder), [index, listFolder]);
   const visibleItems = useMemo(
     () => filterDocs(index, listFolder, query),
@@ -303,6 +309,25 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
     },
     [goTo, vaultId],
   );
+
+  useEffect(() => {
+    if (vaultId === null) {
+      setPreviewBaseUrl(null);
+      return;
+    }
+    let cancelled = false;
+    void rpc
+      .call("previewRoot", { vaultId })
+      .then((result) => {
+        if (!cancelled) setPreviewBaseUrl(result.baseUrl);
+      })
+      .catch(() => {
+        if (!cancelled) setPreviewBaseUrl(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [rpc, vaultId]);
 
   useEffect(() => {
     const remembered = rememberedVaults();

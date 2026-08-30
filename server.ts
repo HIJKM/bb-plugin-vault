@@ -5,6 +5,8 @@ import { DatabaseSync } from "node:sqlite";
 import { defineRpcContract, type BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 
+import { joinPreviewUrl } from "./lib/preview-url";
+
 const vaultSchema = z
   .object({
     id: z.string(),
@@ -78,6 +80,16 @@ export const rpcContract = defineRpcContract({
       })
       .strict(),
   },
+  previewRoot: {
+    input: z.object({ vaultId: z.string().min(1) }).strict(),
+    output: z
+      .object({
+        vaultId: z.string(),
+        baseUrl: z.string(),
+        expiresAtMs: z.number(),
+      })
+      .strict(),
+  },
 });
 
 const INDEX_TTL_MS = 60_000;
@@ -124,16 +136,6 @@ function isImageFile(path: string): boolean {
 
 function isListedFile(path: string): boolean {
   return isDocFile(path) || isImageFile(path);
-}
-
-function joinPreviewUrl(baseUrl: string, relative: string): string {
-  const base = baseUrl.replace(/\/+$/u, "");
-  const rest = relative
-    .split("/")
-    .filter((segment) => segment !== "")
-    .map((segment) => encodeURIComponent(segment))
-    .join("/");
-  return rest === "" ? base : `${base}/${rest}`;
 }
 
 function docKind(path: string): "markdown" | "html" | "text" {
@@ -375,6 +377,19 @@ export default async function plugin(bb: BbPluginApi) {
     return vault;
   }
 
+  async function ensurePreview(vault: z.infer<typeof vaultSchema>): Promise<{ baseUrl: string; expiresAtMs: number }> {
+    const now = Date.now();
+    let cached = previewCache.get(vault.id);
+    if (cached === undefined || cached.expiresAtMs - 15_000 <= now) {
+      cached = await bb.sdk.files.createPreview({
+        rootPath: vault.rootPath,
+        hostId: vault.hostId ?? undefined,
+      });
+      previewCache.set(vault.id, cached);
+    }
+    return cached;
+  }
+
   bb.rpc.register(rpcContract, {
     async listVaults() {
       return { vaults: await loadVaults() };
@@ -473,21 +488,19 @@ export default async function plugin(bb: BbPluginApi) {
       };
     },
 
+    async previewRoot({ vaultId }) {
+      const vault = await vaultById(vaultId);
+      const cached = await ensurePreview(vault);
+      return { vaultId, baseUrl: cached.baseUrl, expiresAtMs: cached.expiresAtMs };
+    },
+
     async previewImage({ vaultId, path }) {
       const vault = await vaultById(vaultId);
       const relative = unescapeRelative(path);
       if (!isImageFile(relative)) {
         throw new Error("이미지 파일이 아닙니다.");
       }
-      const now = Date.now();
-      let cached = previewCache.get(vault.id);
-      if (cached === undefined || cached.expiresAtMs - 15_000 <= now) {
-        cached = await bb.sdk.files.createPreview({
-          rootPath: vault.rootPath,
-          hostId: vault.hostId ?? undefined,
-        });
-        previewCache.set(vault.id, cached);
-      }
+      const cached = await ensurePreview(vault);
       return {
         vaultId,
         path: relative,

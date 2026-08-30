@@ -79,7 +79,7 @@ function escapeMdLabel(label: string): string {
   return label.replace(/[\\[\]]/gu, "\\$&");
 }
 
-function rewritePlain(text: string, entries: readonly WikiEntry[]): string {
+export function rewriteWikiLinkText(text: string, entries: readonly WikiEntry[]): string {
   return text.replace(WIKI_LINK, (whole, target: string, alias?: string) => {
     const path = resolveWikiTarget(target, entries);
     if (path === null) return whole;
@@ -97,8 +97,8 @@ function nextFence(source: string, from: number): { start: number; open: string 
   return tick < tilde ? { start: tick, open: "```" } : { start: tilde, open: "~~~" };
 }
 
-/** Rewrite Obsidian wiki links in markdown, leaving fenced/inline code alone. */
-export function rewriteWikiLinks(source: string, entries: readonly WikiEntry[]): string {
+/** Apply `rewrite` to markdown outside fenced and inline code. */
+export function mapMarkdownPlain(source: string, rewrite: (plain: string) => string): string {
   let out = "";
   let i = 0;
   const n = source.length;
@@ -110,7 +110,7 @@ export function rewriteWikiLinks(source: string, entries: readonly WikiEntry[]):
     if (fenceStart !== -1) cut = Math.min(cut, fenceStart);
     if (tick !== -1) cut = Math.min(cut, tick);
     if (cut > i) {
-      out += rewritePlain(source.slice(i, cut), entries);
+      out += rewrite(source.slice(i, cut));
       i = cut;
       continue;
     }
@@ -138,6 +138,11 @@ export function rewriteWikiLinks(source: string, entries: readonly WikiEntry[]):
     i = close + ticks;
   }
   return out;
+}
+
+/** Rewrite Obsidian wiki links in markdown, leaving fenced/inline code alone. */
+export function rewriteWikiLinks(source: string, entries: readonly WikiEntry[]): string {
+  return mapMarkdownPlain(source, (text) => rewriteWikiLinkText(text, entries));
 }
 
 export function parseVaultLinkHref(href: string | null | undefined): string | null {
