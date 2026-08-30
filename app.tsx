@@ -15,6 +15,7 @@ import { Toolbar } from "@/components/Toolbar";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { useIsCompactViewport } from "@/components/ui/hooks/use-compact-viewport";
+import { readFilterScope, storeFilterScope, type FilterScope } from "@/lib/filter-scope";
 import { isImageFileName } from "@/lib/image-file";
 import { cn } from "@/lib/utils";
 import { publishVaults, rememberedVaults, subscribeVaults, type Vault } from "@/lib/vault-list";
@@ -150,11 +151,19 @@ function matchesDocQuery(entry: DocEntry, needle: string): boolean {
   return name.includes(needle) || label.includes(needle) || base.includes(needle);
 }
 
-/** Current-folder children when idle; all matching descendants when filtering. */
-function filterDocs(entries: readonly DocEntry[], folder: string, query: string): DocEntry[] {
+function filterDocs(
+  entries: readonly DocEntry[],
+  folder: string,
+  query: string,
+  scope: FilterScope,
+): DocEntry[] {
   const needle = query.trim().normalize("NFC").toLowerCase();
   if (needle === "") return childrenOf(entries, folder);
-  const matched = entries.filter((entry) => isUnderFolder(folder, entry.path) && matchesDocQuery(entry, needle));
+  const pool =
+    scope === "folder"
+      ? childrenOf(entries, folder)
+      : entries.filter((entry) => isUnderFolder(folder, entry.path));
+  const matched = pool.filter((entry) => matchesDocQuery(entry, needle));
   const folders = matched.filter((entry) => entry.kind === "directory").sort((a, b) => compareNames(a.name, b.name));
   const files = matched.filter((entry) => entry.kind === "file").sort((a, b) => compareNames(a.name, b.name));
   return [...folders, ...files];
@@ -253,6 +262,7 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
     ...rememberedIndex,
   }));
   const [query, setQuery] = useState("");
+  const [filterScope, setFilterScope] = useState<FilterScope>(readFilterScope);
   const [filterFocusTick, setFilterFocusTick] = useState(0);
   const [doc, setDoc] = useState<DocBody | null>(null);
   const [loadingVaults, setLoadingVaults] = useState(() => rememberedVaults().length === 0);
@@ -269,7 +279,10 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
     : activePath;
   const index = vaultId === null ? [] : (indexByVault[vaultId] ?? []);
   const items = useMemo(() => childrenOf(index, listFolder), [index, listFolder]);
-  const visibleItems = useMemo(() => filterDocs(index, listFolder, query), [index, listFolder, query]);
+  const visibleItems = useMemo(
+    () => filterDocs(index, listFolder, query, filterScope),
+    [index, listFolder, query, filterScope],
+  );
 
   const goTo = useCallback(
     (nextVault: string, nextPath: string, replace = false) => {
@@ -433,6 +446,11 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
         }}
         query={query}
         onQueryChange={setQuery}
+        filterScope={filterScope}
+        onFilterScopeChange={(scope) => {
+          setFilterScope(scope);
+          storeFilterScope(scope);
+        }}
         filterFocusTick={filterFocusTick}
       />
       <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain">
