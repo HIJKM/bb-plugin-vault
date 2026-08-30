@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent } from "react";
 import {
   Markdown,
   definePluginApp,
@@ -18,6 +18,7 @@ import { useIsCompactViewport } from "@/components/ui/hooks/use-compact-viewport
 import { isImageFileName } from "@/lib/image-file";
 import { cn } from "@/lib/utils";
 import { publishVaults, rememberedVaults, subscribeVaults, type Vault } from "@/lib/vault-list";
+import { parseVaultLinkHref, rewriteWikiLinks } from "@/lib/wiki-links";
 import type { rpcContract } from "./server";
 
 const PANEL_PATH = "docs";
@@ -266,6 +267,10 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
       : ""
     : activePath;
   const index = vaultId === null ? [] : (indexByVault[vaultId] ?? []);
+  const markdown = useMemo(() => {
+    if (doc === null || doc.kind !== "markdown") return "";
+    return rewriteWikiLinks(doc.content, index);
+  }, [doc, index]);
   const items = useMemo(() => childrenOf(index, listFolder), [index, listFolder]);
   const visibleItems = useMemo(
     () => filterDocs(index, listFolder, query),
@@ -280,6 +285,23 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
       });
     },
     [navigate],
+  );
+
+  const onWikiClick = useCallback(
+    (event: MouseEvent<HTMLDivElement>) => {
+      if (event.defaultPrevented || event.button !== 0) return;
+      if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
+      if (vaultId === null) return;
+      const node = event.target;
+      if (!(node instanceof Element)) return;
+      const anchor = node.closest("a");
+      if (anchor === null) return;
+      const path = parseVaultLinkHref(anchor.getAttribute("href"));
+      if (path === null) return;
+      event.preventDefault();
+      goTo(vaultId, path);
+    },
+    [goTo, vaultId],
   );
 
   useEffect(() => {
@@ -527,8 +549,8 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
               />
             ) : doc.kind === "markdown" ? (
               <div className="flex w-full justify-center px-4 pt-6 sm:px-8 sm:pt-8">
-                <div className="w-full min-w-0 max-w-prose">
-                  <Markdown content={doc.content} />
+                <div className="w-full min-w-0 max-w-prose" onClickCapture={onWikiClick}>
+                  <Markdown content={markdown} />
                 </div>
               </div>
             ) : (
