@@ -1,6 +1,5 @@
 # Vault
 
-Read-only browser for BB Docs vaults. Lists the same vaults as the builtin
-Docs plugin, opens markdown as rendered text, and never writes.
+Read-only browser for markdown folders. Opens markdown as rendered text and never writes.
 
-The builtin Docs app stays the editor.
+Add vault folders in the plugin settings page, then drag to set tab order.

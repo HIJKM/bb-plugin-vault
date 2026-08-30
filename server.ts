@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -22,10 +22,29 @@ const entrySchema = z
   })
   .strict();
 
+const vaultsOutput = z.object({ vaults: z.array(vaultSchema) }).strict();
+
 export const rpcContract = defineRpcContract({
   listVaults: {
     input: z.null(),
-    output: z.object({ vaults: z.array(vaultSchema) }).strict(),
+    output: vaultsOutput,
+  },
+  addVault: {
+    input: z
+      .object({
+        path: z.string().min(1),
+        name: z.string().optional(),
+      })
+      .strict(),
+    output: vaultsOutput,
+  },
+  removeVault: {
+    input: z.object({ id: z.string().min(1) }).strict(),
+    output: vaultsOutput,
+  },
+  reorderVaults: {
+    input: z.object({ ids: z.array(z.string().min(1)).min(1) }).strict(),
+    output: vaultsOutput,
   },
   listIndex: {
     input: z.object({ vaultId: z.string().min(1) }).strict(),
@@ -140,6 +159,7 @@ function parseVaults(raw: unknown): z.infer<typeof vaultSchema>[] {
 }
 
 type VaultRow = z.infer<typeof vaultSchema>;
+type PluginDb = ReturnType<BbPluginApi["storage"]["database"]>;
 
 function docsVaultDbCandidates(ownDbPath: string): string[] {
   return [
@@ -179,9 +199,9 @@ function compareVaultNames(a: string, b: string): number {
   return a.localeCompare(b, "ko");
 }
 
-function rowsFromPluginDb(db: ReturnType<BbPluginApi["storage"]["database"]>): VaultRow[] {
+function rowsFromPluginDb(db: PluginDb): VaultRow[] {
   const rows = db
-    .prepare("SELECT id, name, host_id, root_path FROM vaults ORDER BY created_at, name")
+    .prepare("SELECT id, name, host_id, root_path FROM vaults ORDER BY sort_order, name")
     .all() as Array<Record<string, unknown>>;
   return parseVaults(
     rows.map((row) => ({
@@ -191,6 +211,82 @@ function rowsFromPluginDb(db: ReturnType<BbPluginApi["storage"]["database"]>): V
       rootPath: row.root_path,
     })),
   );
+}
+
+function expandUserPath(input: string): string {
+  const trimmed = input.trim();
+  if (trimmed === "~") return homedir();
+  if (trimmed.startsWith("~/")) return join(homedir(), trimmed.slice(2));
+  return trimmed;
+}
+
+function resolveVaultPath(input: string): string {
+  const expanded = expandUserPath(input);
+  if (expanded === "" || !expanded.startsWith("/")) {
+    throw new Error("절대 경로나 ~ 경로를 넣어야 합니다.");
+  }
+  if (!existsSync(expanded)) {
+    throw new Error("이 폴더를 찾지 못했습니다.");
+  }
+  let st;
+  try {
+    st = statSync(expanded);
+  } catch {
+    throw new Error("이 폴더를 찾지 못했습니다.");
+  }
+  if (!st.isDirectory()) {
+    throw new Error("폴더 경로를 넣어야 합니다.");
+  }
+  try {
+    return realpathSync(expanded);
+  } catch {
+    return expanded.replace(/\/+$/u, "") || "/";
+  }
+}
+
+function slugFromName(name: string): string {
+  const slug = name
+    .trim()
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[^\p{Letter}\p{Number}]+/gu, "-")
+    .replace(/^-+|-+$/gu, "")
+    .slice(0, 48);
+  return slug === "" ? "vault" : slug;
+}
+
+function unusedVaultId(db: PluginDb, base: string): string {
+  const taken = new Set(
+    (db.prepare("SELECT id FROM vaults").all() as Array<{ id: string }>).map((row) => row.id),
+  );
+  if (!taken.has(base)) return base;
+  for (let i = 2; i < 1000; i += 1) {
+    const id = `${base}-${i}`;
+    if (!taken.has(id)) return id;
+  }
+  return `${base}-${Date.now().toString(36)}`;
+}
+
+function nextSortOrder(db: PluginDb): number {
+  const row = db.prepare("SELECT COALESCE(MAX(sort_order), -1) AS m FROM vaults").get() as { m: number };
+  return Number(row.m) + 1;
+}
+
+function samePath(a: string, b: string): boolean {
+  return a.replace(/\/+$/u, "") === b.replace(/\/+$/u, "");
+}
+
+function seedSortOrder(db: PluginDb): void {
+  const rows = db
+    .prepare("SELECT id, name, sort_order FROM vaults")
+    .all() as Array<{ id: string; name: string; sort_order: number }>;
+  if (rows.length <= 1) return;
+  if (!rows.every((row) => Number(row.sort_order) === 0)) return;
+  const sorted = [...rows].sort((a, b) => compareVaultNames(a.name, b.name));
+  const update = db.prepare("UPDATE vaults SET sort_order = ? WHERE id = ?");
+  sorted.forEach((row, index) => {
+    update.run(index, row.id);
+  });
 }
 
 export default async function plugin(bb: BbPluginApi) {
@@ -203,6 +299,7 @@ export default async function plugin(bb: BbPluginApi) {
       root_path TEXT NOT NULL,
       created_at INTEGER NOT NULL
     )`,
+    `ALTER TABLE vaults ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0`,
   ]);
 
   const existing = rowsFromPluginDb(db);
@@ -213,7 +310,7 @@ export default async function plugin(bb: BbPluginApi) {
       try {
         const imported = readForeignVaults(candidate);
         const insert = db.prepare(
-          "INSERT OR IGNORE INTO vaults (id, name, host_id, root_path, created_at) VALUES (?, ?, ?, ?, ?)",
+          "INSERT OR IGNORE INTO vaults (id, name, host_id, root_path, created_at, sort_order) VALUES (?, ?, ?, ?, ?, 0)",
         );
         const now = Date.now();
         for (const vault of imported) {
@@ -225,12 +322,17 @@ export default async function plugin(bb: BbPluginApi) {
       }
     }
   }
+  seedSortOrder(db);
+
+  function invalidateVaults(): void {
+    vaultsCache = null;
+  }
 
   async function loadVaults(force = false): Promise<VaultRow[]> {
     if (!force && vaultsCache !== null && Date.now() - vaultsCache.at < INDEX_TTL_MS) {
       return vaultsCache.vaults;
     }
-    const vaults = [...rowsFromPluginDb(db)].sort((a, b) => compareVaultNames(a.name, b.name));
+    const vaults = rowsFromPluginDb(db);
     vaultsCache = { at: Date.now(), vaults };
     return vaults;
   }
@@ -245,6 +347,49 @@ export default async function plugin(bb: BbPluginApi) {
   bb.rpc.register(rpcContract, {
     async listVaults() {
       return { vaults: await loadVaults() };
+    },
+
+    async addVault({ path, name }) {
+      const rootPath = resolveVaultPath(path);
+      const current = await loadVaults(true);
+      if (current.some((vault) => samePath(vault.rootPath, rootPath))) {
+        throw new Error("이미 추가한 경로입니다.");
+      }
+      const label = name?.trim() || basename(rootPath);
+      const id = unusedVaultId(db, slugFromName(label));
+      db.prepare(
+        "INSERT INTO vaults (id, name, host_id, root_path, created_at, sort_order) VALUES (?, ?, ?, ?, ?, ?)",
+      ).run(id, label, null, rootPath, Date.now(), nextSortOrder(db));
+      invalidateVaults();
+      return { vaults: await loadVaults(true) };
+    },
+
+    async removeVault({ id }) {
+      const result = db.prepare("DELETE FROM vaults WHERE id = ?").run(id);
+      if (Number(result.changes) === 0) {
+        throw new Error("없는 볼트입니다.");
+      }
+      indexCache.delete(id);
+      invalidateVaults();
+      return { vaults: await loadVaults(true) };
+    },
+
+    async reorderVaults({ ids }) {
+      const current = await loadVaults(true);
+      const existingIds = new Set(current.map((vault) => vault.id));
+      const unique = new Set(ids);
+      if (unique.size !== ids.length || ids.length !== existingIds.size || ids.some((id) => !existingIds.has(id))) {
+        throw new Error("볼트 순서가 올바르지 않습니다.");
+      }
+      const update = db.prepare("UPDATE vaults SET sort_order = ? WHERE id = ?");
+      const apply = db.transaction((ordered: string[]) => {
+        ordered.forEach((id, index) => {
+          update.run(index, id);
+        });
+      });
+      apply(ids);
+      invalidateVaults();
+      return { vaults: await loadVaults(true) };
     },
 
     async listIndex({ vaultId }) {

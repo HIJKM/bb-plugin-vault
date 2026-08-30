@@ -8,11 +8,13 @@ import {
 } from "@get-bb/plugin-sdk/app";
 import { toast } from "sonner";
 
+import { SettingsSection } from "@/components/SettingsSection";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { Input } from "@/components/ui/input";
 import { useIsCompactViewport } from "@/components/ui/hooks/use-compact-viewport";
 import { cn } from "@/lib/utils";
+import { publishVaults, rememberedVaults, subscribeVaults, type Vault } from "@/lib/vault-list";
 import type { rpcContract } from "./server";
 
 const PANEL_PATH = "docs";
@@ -44,13 +46,6 @@ function storeListWidth(width: number): void {
     // ignore quota / private mode
   }
 }
-
-type Vault = {
-  id: string;
-  name: string;
-  hostId: string | null;
-  rootPath: string;
-};
 
 type DocEntry = {
   kind: "file" | "directory";
@@ -110,7 +105,6 @@ function fileLabel(pathOrName: string): string {
   return name.replace(/\.(md|markdown|html|htm|txt)$/iu, "");
 }
 
-let rememberedVaults: Vault[] = [];
 const rememberedIndex: Record<string, DocEntry[]> = {};
 
 function nameRank(name: string): number {
@@ -220,15 +214,13 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
     }
   }
 
-  const [vaults, setVaults] = useState<Vault[]>(() =>
-    [...rememberedVaults].sort((a, b) => compareNames(a.name, b.name)),
-  );
+  const [vaults, setVaults] = useState<Vault[]>(() => rememberedVaults());
   const [indexByVault, setIndexByVault] = useState<Record<string, DocEntry[]>>(() => ({
     ...rememberedIndex,
   }));
   const [query, setQuery] = useState("");
   const [doc, setDoc] = useState<DocBody | null>(null);
-  const [loadingVaults, setLoadingVaults] = useState(() => rememberedVaults.length === 0);
+  const [loadingVaults, setLoadingVaults] = useState(() => rememberedVaults().length === 0);
   const [loadingIndex, setLoadingIndex] = useState(false);
   const [loadingDoc, setLoadingDoc] = useState(false);
 
@@ -260,19 +252,20 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
   );
 
   useEffect(() => {
-    if (rememberedVaults.length > 0) {
-      setVaults(rememberedVaults);
+    const remembered = rememberedVaults();
+    if (remembered.length > 0) {
+      setVaults(remembered);
       setLoadingVaults(false);
-      return;
+    } else {
+      setLoadingVaults(true);
     }
     let cancelled = false;
-    setLoadingVaults(true);
     void rpc
       .call("listVaults")
       .then((result) => {
         if (cancelled) return;
-        rememberedVaults = [...result.vaults].sort((a, b) => compareNames(a.name, b.name));
-        setVaults(rememberedVaults);
+        publishVaults(result.vaults);
+        setVaults(result.vaults);
       })
       .catch((cause: unknown) => {
         if (!cancelled) toast.error(errorText(cause, "볼트 목록을 읽지 못했습니다."));
@@ -280,13 +273,29 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
       .finally(() => {
         if (!cancelled) setLoadingVaults(false);
       });
+    const unsub = subscribeVaults((next) => {
+      setVaults(next);
+      setIndexByVault((current) => {
+        const keep: Record<string, DocEntry[]> = {};
+        for (const vault of next) {
+          const entries = current[vault.id];
+          if (entries !== undefined) keep[vault.id] = entries;
+        }
+        return keep;
+      });
+      for (const key of Object.keys(rememberedIndex)) {
+        if (!next.some((vault) => vault.id === key)) delete rememberedIndex[key];
+      }
+    });
     return () => {
       cancelled = true;
+      unsub();
     };
   }, [rpc]);
 
   useEffect(() => {
-    if (route.vaultId === null && vaults[0] !== undefined) {
+    if (vaults[0] === undefined) return;
+    if (route.vaultId === null || !vaults.some((vault) => vault.id === route.vaultId)) {
       goTo(vaults[0].id, "", true);
     }
   }, [goTo, route.vaultId, vaults]);
@@ -536,5 +545,12 @@ export default definePluginApp((app) => {
     icon: "FileText",
     path: PANEL_PATH,
     component: DocsReaderPanel,
+  });
+
+  app.slots.settingsSection({
+    id: "vaults",
+    title: "볼트",
+    description: "패널에 보여줄 폴더를 넣고, 끌어다 놓아 순서를 바꿉니다.",
+    component: SettingsSection,
   });
 });
