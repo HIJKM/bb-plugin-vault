@@ -9,9 +9,9 @@ import {
 import { toast } from "sonner";
 
 import { SettingsSection } from "@/components/SettingsSection";
+import { Toolbar } from "@/components/Toolbar";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
-import { Input } from "@/components/ui/input";
 import { useIsCompactViewport } from "@/components/ui/hooks/use-compact-viewport";
 import { cn } from "@/lib/utils";
 import { publishVaults, rememberedVaults, subscribeVaults, type Vault } from "@/lib/vault-list";
@@ -120,12 +120,6 @@ function compareNames(a: string, b: string): number {
   return a.localeCompare(b, "ko");
 }
 
-function parentFolderOf(folder: string): string | null {
-  if (folder === "") return null;
-  const cut = folder.lastIndexOf("/");
-  return cut === -1 ? "" : folder.slice(0, cut);
-}
-
 function childrenOf(entries: readonly DocEntry[], folder: string): DocEntry[] {
   const prefix = folder === "" ? "" : `${folder}/`;
   const dirs = new Map<string, DocEntry>();
@@ -219,6 +213,7 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
     ...rememberedIndex,
   }));
   const [query, setQuery] = useState("");
+  const [filterFocusTick, setFilterFocusTick] = useState(0);
   const [doc, setDoc] = useState<DocBody | null>(null);
   const [loadingVaults, setLoadingVaults] = useState(() => rememberedVaults().length === 0);
   const [loadingIndex, setLoadingIndex] = useState(false);
@@ -232,7 +227,6 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
       ? activePath.slice(0, activePath.lastIndexOf("/"))
       : ""
     : activePath;
-  const parentFolder = parentFolderOf(listFolder);
   const index = vaultId === null ? [] : (indexByVault[vaultId] ?? []);
   const items = useMemo(() => childrenOf(index, listFolder), [index, listFolder]);
   const visibleItems = useMemo(() => {
@@ -355,8 +349,22 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
     };
   }, [activePath, rpc, vaultId, viewingFile]);
 
+  const activeVault = vaults.find((vault) => vault.id === vaultId);
   const listPane = (
-    <div className={cn("flex min-h-0 w-full flex-col", compact ? "" : "h-full border-r border-border")}>
+    <div
+      className={cn("flex min-h-0 w-full flex-col", compact ? "" : "h-full border-r border-border")}
+      onKeyDown={(event) => {
+        if (
+          (event.ctrlKey || event.metaKey) &&
+          !event.shiftKey &&
+          !event.altKey &&
+          (event.key === "f" || event.key === "F")
+        ) {
+          event.preventDefault();
+          setFilterFocusTick((tick) => tick + 1);
+        }
+      }}
+    >
       <div className="flex gap-1 overflow-x-auto border-b border-border px-2 py-2">
         {vaults.map((vault) => {
           const selected = vault.id === vaultId;
@@ -375,34 +383,17 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
           );
         })}
       </div>
-      <div className="flex items-center gap-2 border-b border-border p-3">
-        {parentFolder !== null && vaultId !== null ? (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="shrink-0 px-2"
-            onClick={() => goTo(vaultId, parentFolder)}
-            aria-label="상위 폴더"
-          >
-            <Icon name="ChevronLeft" className="size-4" />
-            ..
-          </Button>
-        ) : null}
-        <div className="relative min-w-0 flex-1">
-          <Icon
-            name="Search"
-            className="pointer-events-none absolute top-1/2 left-2 size-4 -translate-y-1/2 text-muted-foreground"
-          />
-          <Input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="이름 검색"
-            className="pl-8"
-            aria-label="문서 이름 검색"
-          />
-        </div>
-      </div>
+      <Toolbar
+        folder={listFolder}
+        rootLabel={activeVault?.name ?? "Vault"}
+        onNavigate={(path) => {
+          if (vaultId === null) return;
+          goTo(vaultId, path);
+        }}
+        query={query}
+        onQueryChange={setQuery}
+        filterFocusTick={filterFocusTick}
+      />
       <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain">
         {loadingVaults || (loadingIndex && items.length === 0) ? (
           <p className="p-4 text-sm text-muted-foreground">불러오는 중…</p>
