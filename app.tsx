@@ -62,6 +62,11 @@ type DocEntry = {
   name: string;
 };
 
+type VaultIndex = {
+  entries: DocEntry[];
+  rawArchive: Record<string, string>;
+};
+
 type DocBody =
   | {
       vaultId: string;
@@ -122,7 +127,7 @@ function fileLabel(pathOrName: string): string {
   return name.replace(/\.(md|markdown|html|htm|txt)$/iu, "");
 }
 
-const rememberedIndex: Record<string, DocEntry[]> = {};
+const rememberedIndex: Record<string, VaultIndex> = {};
 
 function nameRank(name: string): number {
   const n = name.trim().toLowerCase();
@@ -253,7 +258,7 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
   }
 
   const [vaults, setVaults] = useState<Vault[]>(() => rememberedVaults());
-  const [indexByVault, setIndexByVault] = useState<Record<string, DocEntry[]>>(() => ({
+  const [indexByVault, setIndexByVault] = useState<Record<string, VaultIndex>>(() => ({
     ...rememberedIndex,
   }));
   const [query, setQuery] = useState("");
@@ -277,7 +282,9 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
       ? activePath.slice(0, activePath.lastIndexOf("/"))
       : ""
     : activePath;
-  const index = vaultId === null ? [] : (indexByVault[vaultId] ?? []);
+  const vaultIndex = vaultId === null ? undefined : indexByVault[vaultId];
+  const index = vaultIndex?.entries ?? [];
+  const rawArchive = vaultIndex?.rawArchive ?? {};
   const markdown = useMemo(() => {
     if (doc === null || doc.kind !== "markdown") {
       return { body: "", fields: [] as FrontmatterField[] };
@@ -369,10 +376,10 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
     const unsub = subscribeVaults((next) => {
       setVaults(next);
       setIndexByVault((current) => {
-        const keep: Record<string, DocEntry[]> = {};
+        const keep: Record<string, VaultIndex> = {};
         for (const vault of next) {
-          const entries = current[vault.id];
-          if (entries !== undefined) keep[vault.id] = entries;
+          const listed = current[vault.id];
+          if (listed !== undefined) keep[vault.id] = listed;
         }
         return keep;
       });
@@ -408,8 +415,9 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
       .call("listIndex", { vaultId })
       .then((result) => {
         if (cancelled) return;
-        rememberedIndex[vaultId] = result.entries;
-        setIndexByVault((current) => ({ ...current, [vaultId]: result.entries }));
+        const listed: VaultIndex = { entries: result.entries, rawArchive: result.rawArchive };
+        rememberedIndex[vaultId] = listed;
+        setIndexByVault((current) => ({ ...current, [vaultId]: listed }));
       })
       .catch((cause: unknown) => {
         if (!cancelled) toast.error(errorText(cause, "문서를 나열하지 못했습니다."));
@@ -586,6 +594,7 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
                 docPath={doc.path}
                 index={index}
                 vaultId={vaultId}
+                rawByHash={rawArchive}
                 onOpen={goTo}
               />
             ) : null}

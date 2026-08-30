@@ -6,6 +6,7 @@ import { defineRpcContract, type BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 
 import { joinPreviewUrl } from "./lib/preview-url";
+import { parseRawArchiveJsonl, RAW_ARCHIVE_RELATIVE } from "./lib/raw-archive";
 
 const vaultSchema = z
   .object({
@@ -54,6 +55,7 @@ export const rpcContract = defineRpcContract({
       .object({
         vaultId: z.string(),
         entries: z.array(entrySchema),
+        rawArchive: z.record(z.string(), z.string()),
       })
       .strict(),
   },
@@ -95,7 +97,7 @@ export const rpcContract = defineRpcContract({
 const INDEX_TTL_MS = 60_000;
 
 type CachedVaults = { at: number; vaults: z.infer<typeof vaultSchema>[] };
-type CachedIndex = { at: number; entries: z.infer<typeof entrySchema>[] };
+type CachedIndex = { at: number; entries: z.infer<typeof entrySchema>[]; rawArchive: Record<string, string> };
 
 let vaultsCache: CachedVaults | null = null;
 const indexCache = new Map<string, CachedIndex>();
@@ -377,6 +379,23 @@ export default async function plugin(bb: BbPluginApi) {
     return vault;
   }
 
+  async function loadRawArchive(vault: z.infer<typeof vaultSchema>): Promise<Record<string, string>> {
+    try {
+      const file = await bb.sdk.files.read({
+        path: joinRoot(vault.rootPath, RAW_ARCHIVE_RELATIVE),
+        rootPath: vault.rootPath,
+        hostId: vault.hostId ?? undefined,
+      });
+      const content =
+        file.contentEncoding === "base64"
+          ? Buffer.from(file.content, "base64").toString("utf8")
+          : file.content;
+      return parseRawArchiveJsonl(content);
+    } catch {
+      return {};
+    }
+  }
+
   async function ensurePreview(vault: z.infer<typeof vaultSchema>): Promise<{ baseUrl: string; expiresAtMs: number }> {
     const now = Date.now();
     let cached = previewCache.get(vault.id);
@@ -442,7 +461,7 @@ export default async function plugin(bb: BbPluginApi) {
     async listIndex({ vaultId }) {
       const cached = indexCache.get(vaultId);
       if (cached !== undefined && Date.now() - cached.at < INDEX_TTL_MS) {
-        return { vaultId, entries: cached.entries };
+        return { vaultId, entries: cached.entries, rawArchive: cached.rawArchive };
       }
       const vault = await vaultById(vaultId);
       const listed = await bb.sdk.files.listPaths({
@@ -460,8 +479,9 @@ export default async function plugin(bb: BbPluginApi) {
         if (kind === "file" && !isListedFile(relative)) continue;
         entries.push({ kind, path: relative, name: displayName(relative, kind) });
       }
-      indexCache.set(vaultId, { at: Date.now(), entries });
-      return { vaultId, entries };
+      const rawArchive = await loadRawArchive(vault);
+      indexCache.set(vaultId, { at: Date.now(), entries, rawArchive });
+      return { vaultId, entries, rawArchive };
     },
 
     async readDoc({ vaultId, path }) {

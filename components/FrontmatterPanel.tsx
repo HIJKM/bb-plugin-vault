@@ -8,6 +8,7 @@ import {
   type FrontmatterField,
   type FrontmatterItem,
 } from "@/lib/frontmatter";
+import { isRawHash, rawArchiveLabel } from "@/lib/raw-archive";
 import { cn } from "@/lib/utils";
 import { resolveWikiTarget, type WikiEntry } from "@/lib/wiki-links";
 
@@ -35,6 +36,7 @@ function FieldValues({
   expanded,
   index,
   vaultId,
+  rawByHash,
   onOpen,
   onToggle,
 }: {
@@ -42,12 +44,14 @@ function FieldValues({
   expanded: boolean;
   index: readonly WikiEntry[];
   vaultId: string | null;
+  rawByHash: Readonly<Record<string, string>>;
   onOpen: (vaultId: string, path: string) => void;
   onToggle: () => void;
 }) {
   const overflow = field.items.length > PREVIEW_LIMIT;
   const visible = expanded || !overflow ? field.items : field.items.slice(0, PREVIEW_LIMIT);
   const tags = field.key === "tags";
+  const raw = field.key === "raw";
   return (
     <div>
       <div className="text-xs font-medium text-muted-foreground">{frontmatterFieldLabel(field.key)}</div>
@@ -57,8 +61,10 @@ function FieldValues({
             key={`${field.key}-${offset}-${itemLabel(item)}`}
             item={item}
             tags={tags}
+            raw={raw}
             index={index}
             vaultId={vaultId}
+            rawByHash={rawByHash}
             onOpen={onOpen}
           />
         ))}
@@ -79,14 +85,18 @@ function FieldValues({
 function FieldValue({
   item,
   tags,
+  raw,
   index,
   vaultId,
+  rawByHash,
   onOpen,
 }: {
   item: FrontmatterItem;
   tags: boolean;
+  raw: boolean;
   index: readonly WikiEntry[];
   vaultId: string | null;
+  rawByHash: Readonly<Record<string, string>>;
   onOpen: (vaultId: string, path: string) => void;
 }) {
   const text = itemLabel(item);
@@ -101,6 +111,22 @@ function FieldValue({
           onClick={() => onOpen(vaultId, path)}
         >
           {text}
+        </button>
+      );
+    }
+  }
+  if (raw && item.kind === "text" && isRawHash(item.text) && vaultId !== null) {
+    const path = rawByHash[item.text.trim().toLowerCase()];
+    if (path !== undefined) {
+      const label = rawArchiveLabel(path);
+      return (
+        <button
+          type="button"
+          className={cn("max-w-full truncate text-left text-primary hover:underline", textClass)}
+          title={item.text}
+          onClick={() => onOpen(vaultId, path)}
+        >
+          {label}
         </button>
       );
     }
@@ -124,12 +150,14 @@ export function FrontmatterPanel({
   docPath,
   index,
   vaultId,
+  rawByHash,
   onOpen,
 }: {
   fields: readonly FrontmatterField[];
   docPath: string;
   index: readonly WikiEntry[];
   vaultId: string | null;
+  rawByHash: Readonly<Record<string, string>>;
   onOpen: (vaultId: string, path: string) => void;
 }) {
   const [open, setOpen] = useState(readOpen);
@@ -167,6 +195,7 @@ export function FrontmatterPanel({
               expanded={expanded.has(field.key)}
               index={index}
               vaultId={vaultId}
+              rawByHash={rawByHash}
               onOpen={onOpen}
               onToggle={() => {
                 setExpanded((current) => {
