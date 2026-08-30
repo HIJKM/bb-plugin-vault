@@ -9,6 +9,7 @@ import {
 import { toast } from "sonner";
 
 import { DocumentEndSpace } from "@/components/DocumentEndSpace";
+import { FrontmatterPanel } from "@/components/FrontmatterPanel";
 import { ImagePreview } from "@/components/ImagePreview";
 import { SettingsSection } from "@/components/SettingsSection";
 import { Toolbar } from "@/components/Toolbar";
@@ -18,14 +19,9 @@ import { useIsCompactViewport } from "@/components/ui/hooks/use-compact-viewport
 import { isImageFileName } from "@/lib/image-file";
 import { cn } from "@/lib/utils";
 import { publishVaults, rememberedVaults, subscribeVaults, type Vault } from "@/lib/vault-list";
-import {
-  frontmatterWikiMentions,
-  mentionLabel,
-  splitMarkdownFrontmatter,
-  type WikiMention,
-} from "@/lib/frontmatter";
+import { parseFrontmatterFields, splitMarkdownFrontmatter, type FrontmatterField } from "@/lib/frontmatter";
 import { rewriteVaultMarkdown } from "@/lib/vault-markdown";
-import { parseVaultLinkHref, resolveWikiTarget } from "@/lib/wiki-links";
+import { parseVaultLinkHref } from "@/lib/wiki-links";
 import type { rpcContract } from "./server";
 
 const PANEL_PATH = "docs";
@@ -122,50 +118,6 @@ function fileLabel(pathOrName: string): string {
   const cut = pathOrName.lastIndexOf("/");
   const name = cut === -1 ? pathOrName : pathOrName.slice(cut + 1);
   return name.replace(/\.(md|markdown|html|htm|txt)$/iu, "");
-}
-
-function MentionLine({
-  label,
-  mentions,
-  index,
-  vaultId,
-  onOpen,
-}: {
-  label: string;
-  mentions: readonly WikiMention[];
-  index: readonly DocEntry[];
-  vaultId: string | null;
-  onOpen: (vaultId: string, path: string) => void;
-}) {
-  if (mentions.length === 0) return null;
-  return (
-    <div className="mt-2">
-      <div className="text-xs font-medium text-muted-foreground">{label}</div>
-      <div className="mt-0.5 flex flex-wrap gap-x-2 gap-y-1 pl-3 text-xs font-normal">
-        {mentions.map((mention) => {
-          const path = resolveWikiTarget(mention.target, index);
-          const text = mentionLabel(mention);
-          if (path === null || vaultId === null) {
-            return (
-              <span key={mention.target} className="text-foreground/80">
-                {text}
-              </span>
-            );
-          }
-          return (
-            <button
-              key={mention.target}
-              type="button"
-              className="max-w-full truncate text-left font-normal text-primary hover:underline"
-              onClick={() => onOpen(vaultId, path)}
-            >
-              {text}
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
 }
 
 const rememberedIndex: Record<string, DocEntry[]> = {};
@@ -321,7 +273,7 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
   const index = vaultId === null ? [] : (indexByVault[vaultId] ?? []);
   const markdown = useMemo(() => {
     if (doc === null || doc.kind !== "markdown") {
-      return { body: "", related: [] as WikiMention[], sources: [] as WikiMention[] };
+      return { body: "", fields: [] as FrontmatterField[] };
     }
     const split = splitMarkdownFrontmatter(doc.content);
     return {
@@ -330,8 +282,7 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
         docPath: doc.path,
         previewBaseUrl,
       }),
-      related: split.frontmatter === null ? [] : frontmatterWikiMentions(split.frontmatter, "related"),
-      sources: split.frontmatter === null ? [] : frontmatterWikiMentions(split.frontmatter, "sources"),
+      fields: split.frontmatter === null ? [] : parseFrontmatterFields(split.frontmatter),
     };
   }, [doc, index, previewBaseUrl]);
   const items = useMemo(() => childrenOf(index, listFolder), [index, listFolder]);
@@ -618,22 +569,13 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
           <div className="border-b border-border px-4 py-3">
             <h1 className="truncate text-base font-medium">{fileLabel(doc.name)}</h1>
             {doc.kind === "markdown" ? (
-              <>
-                <MentionLine
-                  label="관련"
-                  mentions={markdown.related}
-                  index={index}
-                  vaultId={vaultId}
-                  onOpen={goTo}
-                />
-                <MentionLine
-                  label="출처"
-                  mentions={markdown.sources}
-                  index={index}
-                  vaultId={vaultId}
-                  onOpen={goTo}
-                />
-              </>
+              <FrontmatterPanel
+                fields={markdown.fields}
+                docPath={doc.path}
+                index={index}
+                vaultId={vaultId}
+                onOpen={goTo}
+              />
             ) : null}
           </div>
           {doc.kind === "image" ? (
