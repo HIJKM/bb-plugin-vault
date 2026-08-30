@@ -9,11 +9,13 @@ import {
 import { toast } from "sonner";
 
 import { DocumentEndSpace } from "@/components/DocumentEndSpace";
+import { ImagePreview } from "@/components/ImagePreview";
 import { SettingsSection } from "@/components/SettingsSection";
 import { Toolbar } from "@/components/Toolbar";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { useIsCompactViewport } from "@/components/ui/hooks/use-compact-viewport";
+import { isImageFileName } from "@/lib/image-file";
 import { cn } from "@/lib/utils";
 import { publishVaults, rememberedVaults, subscribeVaults, type Vault } from "@/lib/vault-list";
 import type { rpcContract } from "./server";
@@ -54,13 +56,21 @@ type DocEntry = {
   name: string;
 };
 
-type DocBody = {
-  vaultId: string;
-  path: string;
-  name: string;
-  content: string;
-  kind: "markdown" | "html" | "text";
-};
+type DocBody =
+  | {
+      vaultId: string;
+      path: string;
+      name: string;
+      content: string;
+      kind: "markdown" | "html" | "text";
+    }
+  | {
+      vaultId: string;
+      path: string;
+      name: string;
+      url: string;
+      kind: "image";
+    };
 
 function errorText(cause: unknown, fallback: string): string {
   return cause instanceof Error ? cause.message : fallback;
@@ -97,7 +107,7 @@ function decodeRoute(subPath: string): { vaultId: string | null; path: string } 
 }
 
 function isProbablyFile(path: string): boolean {
-  return /\.(md|markdown|html|htm|txt)$/iu.test(path);
+  return /\.(md|markdown|html|htm|txt)$/iu.test(path) || isImageFileName(path);
 }
 
 function fileLabel(pathOrName: string): string {
@@ -357,8 +367,13 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
     }
     let cancelled = false;
     setLoadingDoc(true);
-    void rpc
-      .call("readDoc", { vaultId, path: activePath })
+    const request = isImageFileName(activePath)
+      ? rpc.call("previewImage", { vaultId, path: activePath }).then((result) => ({
+          ...result,
+          kind: "image" as const,
+        }))
+      : rpc.call("readDoc", { vaultId, path: activePath });
+    void request
       .then((result) => {
         if (!cancelled) setDoc(result);
       })
@@ -448,7 +463,12 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
                     goTo(vaultId, item.path);
                   }}
                 >
-                  <Icon name={item.kind === "directory" ? "Folder" : "FileText"} className="size-4 shrink-0" />
+                  <Icon
+                    name={
+                      item.kind === "directory" ? "Folder" : isImageFileName(item.path) ? "File" : "FileText"
+                    }
+                    className="size-4 shrink-0"
+                  />
                   <span className="min-w-0 flex-1 truncate text-sm">
                     {item.kind === "file" ? fileLabel(item.name) : item.name}
                   </span>
@@ -501,6 +521,9 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
           <div className="border-b border-border px-4 py-3">
             <h1 className="truncate text-base font-medium">{fileLabel(doc.name)}</h1>
           </div>
+          {doc.kind === "image" ? (
+            <ImagePreview url={doc.url} name={fileLabel(doc.name)} />
+          ) : (
           <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain">
             {doc.kind === "html" ? (
               <iframe
@@ -520,6 +543,7 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
             )}
             {doc.kind !== "html" ? <DocumentEndSpace /> : null}
           </div>
+          )}
         </>
       )}
     </div>

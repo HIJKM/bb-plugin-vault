@@ -67,6 +67,17 @@ export const rpcContract = defineRpcContract({
       })
       .strict(),
   },
+  previewImage: {
+    input: z.object({ vaultId: z.string().min(1), path: z.string().min(1) }).strict(),
+    output: z
+      .object({
+        vaultId: z.string(),
+        path: z.string(),
+        name: z.string(),
+        url: z.string(),
+      })
+      .strict(),
+  },
 });
 
 const INDEX_TTL_MS = 60_000;
@@ -76,6 +87,7 @@ type CachedIndex = { at: number; entries: z.infer<typeof entrySchema>[] };
 
 let vaultsCache: CachedVaults | null = null;
 const indexCache = new Map<string, CachedIndex>();
+const previewCache = new Map<string, { baseUrl: string; expiresAtMs: number }>();
 
 function asRecord(value: unknown): Record<string, unknown> {
   if (value !== null && typeof value === "object" && !Array.isArray(value)) {
@@ -90,6 +102,7 @@ function basename(path: string): string {
 }
 
 const DOC_EXT = /\.(md|markdown|html|htm|txt)$/iu;
+const IMAGE_EXT = /\.(avif|bmp|gif|ico|jfif|jpe?g|png|svg|webp)$/iu;
 
 function entryKind(kind: string): "file" | "directory" {
   return kind === "directory" ? "directory" : "file";
@@ -103,6 +116,24 @@ function displayName(path: string, kind: "file" | "directory"): string {
 
 function isDocFile(path: string): boolean {
   return DOC_EXT.test(basename(path));
+}
+
+function isImageFile(path: string): boolean {
+  return IMAGE_EXT.test(basename(path));
+}
+
+function isListedFile(path: string): boolean {
+  return isDocFile(path) || isImageFile(path);
+}
+
+function joinPreviewUrl(baseUrl: string, relative: string): string {
+  const base = baseUrl.replace(/\/+$/u, "");
+  const rest = relative
+    .split("/")
+    .filter((segment) => segment !== "")
+    .map((segment) => encodeURIComponent(segment))
+    .join("/");
+  return rest === "" ? base : `${base}/${rest}`;
 }
 
 function docKind(path: string): "markdown" | "html" | "text" {
@@ -370,6 +401,7 @@ export default async function plugin(bb: BbPluginApi) {
         throw new Error("없는 볼트입니다.");
       }
       indexCache.delete(id);
+      previewCache.delete(id);
       invalidateVaults();
       return { vaults: await loadVaults(true) };
     },
@@ -410,7 +442,7 @@ export default async function plugin(bb: BbPluginApi) {
         const relative = toRelative(vault.rootPath, row.path);
         if (relative === "" || relative.split("/").some((part) => part.startsWith("."))) continue;
         const kind = entryKind(row.kind);
-        if (kind === "file" && !isDocFile(relative)) continue;
+        if (kind === "file" && !isListedFile(relative)) continue;
         entries.push({ kind, path: relative, name: displayName(relative, kind) });
       }
       indexCache.set(vaultId, { at: Date.now(), entries });
@@ -420,6 +452,9 @@ export default async function plugin(bb: BbPluginApi) {
     async readDoc({ vaultId, path }) {
       const vault = await vaultById(vaultId);
       const relative = unescapeRelative(path);
+      if (isImageFile(relative)) {
+        throw new Error("이미지는 미리보기로 엽니다.");
+      }
       const file = await bb.sdk.files.read({
         path: joinRoot(vault.rootPath, relative),
         rootPath: vault.rootPath,
@@ -435,6 +470,29 @@ export default async function plugin(bb: BbPluginApi) {
         name: displayName(relative, "file"),
         content,
         kind: docKind(relative),
+      };
+    },
+
+    async previewImage({ vaultId, path }) {
+      const vault = await vaultById(vaultId);
+      const relative = unescapeRelative(path);
+      if (!isImageFile(relative)) {
+        throw new Error("이미지 파일이 아닙니다.");
+      }
+      const now = Date.now();
+      let cached = previewCache.get(vault.id);
+      if (cached === undefined || cached.expiresAtMs - 15_000 <= now) {
+        cached = await bb.sdk.files.createPreview({
+          rootPath: vault.rootPath,
+          hostId: vault.hostId ?? undefined,
+        });
+        previewCache.set(vault.id, cached);
+      }
+      return {
+        vaultId,
+        path: relative,
+        name: basename(relative),
+        url: joinPreviewUrl(cached.baseUrl, relative),
       };
     },
   });
