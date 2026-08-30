@@ -113,6 +113,19 @@ function fileLabel(pathOrName: string): string {
 let rememberedVaults: Vault[] = [];
 const rememberedIndex: Record<string, DocEntry[]> = {};
 
+function nameRank(name: string): number {
+  const n = name.trim().toLowerCase();
+  if (n === "memex") return 0;
+  if (n === "scratch") return 1;
+  return 2;
+}
+
+function compareNames(a: string, b: string): number {
+  const ranked = nameRank(a) - nameRank(b);
+  if (ranked !== 0) return ranked;
+  return a.localeCompare(b, "ko");
+}
+
 function parentFolderOf(folder: string): string | null {
   if (folder === "") return null;
   const cut = folder.lastIndexOf("/");
@@ -143,8 +156,8 @@ function childrenOf(entries: readonly DocEntry[], folder: string): DocEntry[] {
       });
     }
   }
-  const folders = [...dirs.values()].sort((a, b) => a.name.localeCompare(b.name, "ko"));
-  files.sort((a, b) => a.name.localeCompare(b.name, "ko"));
+  const folders = [...dirs.values()].sort((a, b) => compareNames(a.name, b.name));
+  files.sort((a, b) => compareNames(a.name, b.name));
   return [...folders, ...files];
 }
 
@@ -207,7 +220,9 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
     }
   }
 
-  const [vaults, setVaults] = useState<Vault[]>(() => rememberedVaults);
+  const [vaults, setVaults] = useState<Vault[]>(() =>
+    [...rememberedVaults].sort((a, b) => compareNames(a.name, b.name)),
+  );
   const [indexByVault, setIndexByVault] = useState<Record<string, DocEntry[]>>(() => ({
     ...rememberedIndex,
   }));
@@ -256,8 +271,8 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
       .call("listVaults")
       .then((result) => {
         if (cancelled) return;
-        rememberedVaults = result.vaults;
-        setVaults(result.vaults);
+        rememberedVaults = [...result.vaults].sort((a, b) => compareNames(a.name, b.name));
+        setVaults(rememberedVaults);
       })
       .catch((cause: unknown) => {
         if (!cancelled) toast.error(errorText(cause, "볼트 목록을 읽지 못했습니다."));
@@ -452,18 +467,22 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
           <div className="border-b border-border px-4 py-3">
             <h1 className="truncate text-base font-medium">{fileLabel(doc.name)}</h1>
           </div>
-          <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain p-4">
+          <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain">
             {doc.kind === "html" ? (
               <iframe
                 title={doc.name}
                 sandbox=""
                 srcDoc={doc.content}
-                className="h-full min-h-[24rem] w-full rounded-md border border-border bg-background"
+                className="m-4 h-full min-h-[24rem] w-[calc(100%-2rem)] rounded-md border border-border bg-background"
               />
             ) : doc.kind === "markdown" ? (
-              <Markdown content={doc.content} />
+              <div className="flex w-full justify-center px-4 py-6 sm:px-8 sm:py-8">
+                <div className="w-full min-w-0 max-w-prose">
+                  <Markdown content={doc.content} />
+                </div>
+              </div>
             ) : (
-              <pre className="whitespace-pre-wrap break-all font-mono text-sm leading-6">{doc.content}</pre>
+              <pre className="whitespace-pre-wrap break-all p-4 font-mono text-sm leading-6">{doc.content}</pre>
             )}
           </div>
         </>

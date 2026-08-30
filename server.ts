@@ -167,6 +167,18 @@ function readForeignVaults(dbPath: string): VaultRow[] {
   }
 }
 
+function compareVaultNames(a: string, b: string): number {
+  const rank = (name: string): number => {
+    const n = name.trim().toLowerCase();
+    if (n === "memex") return 0;
+    if (n === "scratch") return 1;
+    return 2;
+  };
+  const ranked = rank(a) - rank(b);
+  if (ranked !== 0) return ranked;
+  return a.localeCompare(b, "ko");
+}
+
 function rowsFromPluginDb(db: ReturnType<BbPluginApi["storage"]["database"]>): VaultRow[] {
   const rows = db
     .prepare("SELECT id, name, host_id, root_path FROM vaults ORDER BY created_at, name")
@@ -218,7 +230,7 @@ export default async function plugin(bb: BbPluginApi) {
     if (!force && vaultsCache !== null && Date.now() - vaultsCache.at < INDEX_TTL_MS) {
       return vaultsCache.vaults;
     }
-    const vaults = rowsFromPluginDb(db);
+    const vaults = [...rowsFromPluginDb(db)].sort((a, b) => compareVaultNames(a.name, b.name));
     vaultsCache = { at: Date.now(), vaults };
     return vaults;
   }
