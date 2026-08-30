@@ -22,6 +22,7 @@ import { isImageFileName } from "@/lib/image-file";
 import { cn } from "@/lib/utils";
 import { publishVaults, rememberedVaults, subscribeVaults, type Vault } from "@/lib/vault-list";
 import { parseFrontmatterFields, splitMarkdownFrontmatter, type FrontmatterField } from "@/lib/frontmatter";
+import { readSessionRoute, writeSessionRoute } from "@/lib/session-route";
 import { rewriteVaultMarkdown } from "@/lib/vault-markdown";
 import { parseVaultLinkHref } from "@/lib/wiki-links";
 import type { rpcContract } from "./server";
@@ -395,10 +396,18 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
 
   useEffect(() => {
     if (vaults[0] === undefined) return;
-    if (route.vaultId === null || !vaults.some((vault) => vault.id === route.vaultId)) {
-      goTo(vaults[0].id, "", true);
+    const known = route.vaultId !== null && vaults.some((vault) => vault.id === route.vaultId);
+    if (known && route.vaultId !== null) {
+      writeSessionRoute(encodeRoute(route.vaultId, route.path));
+      return;
     }
-  }, [goTo, route.vaultId, vaults]);
+    const last = decodeRoute(readSessionRoute());
+    if (last.vaultId !== null && vaults.some((vault) => vault.id === last.vaultId)) {
+      goTo(last.vaultId, last.path, true);
+      return;
+    }
+    goTo(vaults[0].id, "", true);
+  }, [goTo, route.path, route.vaultId, vaults]);
 
   useEffect(() => {
     if (vaultId === null) return;
