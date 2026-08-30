@@ -57,9 +57,14 @@ export function Toolbar({
     if (!filterOpen) return;
     const anchor = filterWrapRef.current;
     if (anchor !== null) setPopoverBox(placePopover(anchor));
+  }, [filterOpen]);
+
+  useLayoutEffect(() => {
+    if (!filterOpen) return;
     const input = searchInputRef.current;
-    input?.focus();
-    input?.select();
+    if (input === null) return;
+    input.focus();
+    if (input.value === "") input.select();
   }, [filterOpen, filterFocusTick]);
 
   useEffect(() => {
@@ -132,12 +137,15 @@ export function Toolbar({
             >
               <Input
                 ref={searchInputRef}
-                type="search"
+                type="text"
                 value={query}
                 data-testid="vault-search"
                 aria-label="Filter this folder"
                 placeholder="Filter…"
                 className="h-8 text-sm"
+                autoCapitalize="off"
+                autoCorrect="off"
+                spellCheck={false}
                 onChange={(event) => onQueryChange(event.target.value)}
                 onKeyDown={(event) => {
                   if (event.key === "Escape") {

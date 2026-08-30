@@ -121,6 +121,35 @@ function compareNames(a: string, b: string): number {
   return a.localeCompare(b, "ko");
 }
 
+function isUnderFolder(folder: string, path: string): boolean {
+  if (path === folder || path === "") return false;
+  if (folder === "") return true;
+  return path.startsWith(`${folder}/`);
+}
+
+function relativePath(folder: string, path: string): string {
+  if (folder === "") return path;
+  const prefix = `${folder}/`;
+  return path.startsWith(prefix) ? path.slice(prefix.length) : path;
+}
+
+function matchesDocQuery(entry: DocEntry, needle: string): boolean {
+  const name = entry.name.normalize("NFC").toLowerCase();
+  const label = fileLabel(entry.name).normalize("NFC").toLowerCase();
+  const base = fileLabel(relativePath("", entry.path)).normalize("NFC").toLowerCase();
+  return name.includes(needle) || label.includes(needle) || base.includes(needle);
+}
+
+/** Current-folder children when idle; all matching descendants when filtering. */
+function filterDocs(entries: readonly DocEntry[], folder: string, query: string): DocEntry[] {
+  const needle = query.trim().normalize("NFC").toLowerCase();
+  if (needle === "") return childrenOf(entries, folder);
+  const matched = entries.filter((entry) => isUnderFolder(folder, entry.path) && matchesDocQuery(entry, needle));
+  const folders = matched.filter((entry) => entry.kind === "directory").sort((a, b) => compareNames(a.name, b.name));
+  const files = matched.filter((entry) => entry.kind === "file").sort((a, b) => compareNames(a.name, b.name));
+  return [...folders, ...files];
+}
+
 function childrenOf(entries: readonly DocEntry[], folder: string): DocEntry[] {
   const prefix = folder === "" ? "" : `${folder}/`;
   const dirs = new Map<string, DocEntry>();
@@ -230,11 +259,7 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
     : activePath;
   const index = vaultId === null ? [] : (indexByVault[vaultId] ?? []);
   const items = useMemo(() => childrenOf(index, listFolder), [index, listFolder]);
-  const visibleItems = useMemo(() => {
-    const needle = query.trim().toLowerCase();
-    if (needle === "") return items;
-    return items.filter((item) => `${item.name} ${item.path}`.toLowerCase().includes(needle));
-  }, [items, query]);
+  const visibleItems = useMemo(() => filterDocs(index, listFolder, query), [index, listFolder, query]);
 
   const goTo = useCallback(
     (nextVault: string, nextPath: string, replace = false) => {
@@ -407,6 +432,9 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
         <ul className="p-1">
           {visibleItems.map((item) => {
             const selected = item.path === activePath;
+            const rel = relativePath(listFolder, item.path);
+            const slash = rel.lastIndexOf("/");
+            const parentRel = slash === -1 ? "" : rel.slice(0, slash);
             return (
               <li key={item.path}>
                 <button
@@ -424,6 +452,11 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
                   <span className="min-w-0 flex-1 truncate text-sm">
                     {item.kind === "file" ? fileLabel(item.name) : item.name}
                   </span>
+                  {parentRel === "" ? null : (
+                    <span className="min-w-0 max-w-[45%] truncate text-xs text-muted-foreground" title={parentRel}>
+                      {parentRel}
+                    </span>
+                  )}
                 </button>
               </li>
             );
