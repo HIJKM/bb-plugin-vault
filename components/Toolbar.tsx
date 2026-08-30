@@ -1,12 +1,28 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 import { PathBar } from "@/components/PathBar";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { Input } from "@/components/ui/input";
+import { usePortalScopeProps } from "@/lib/portal-scope";
 import { cn } from "@/lib/utils";
 
 const ACTION_BUTTON_CLASS = "h-7 w-7 shrink-0 p-0";
+const POPOVER_WIDTH = 224;
+
+function placePopover(anchor: HTMLElement): { top: number; left: number; width: number } {
+  const rect = anchor.getBoundingClientRect();
+  const width = Math.min(POPOVER_WIDTH, Math.max(160, window.innerWidth - 16));
+  const maxLeft = window.innerWidth - width - 8;
+  const left = Math.min(Math.max(8, rect.right - width), Math.max(8, maxLeft));
+  const height = 48;
+  let top = rect.bottom - 2;
+  if (top + height > window.innerHeight - 8) {
+    top = Math.max(8, rect.top - height + 2);
+  }
+  return { top, left, width };
+}
 
 export interface ToolbarProps {
   folder: string;
@@ -26,9 +42,11 @@ export function Toolbar({
   filterFocusTick = 0,
 }: ToolbarProps) {
   const [filterOpen, setFilterOpen] = useState(false);
+  const [popoverBox, setPopoverBox] = useState({ top: 0, left: 0, width: POPOVER_WIDTH });
   const filterWrapRef = useRef<HTMLDivElement>(null);
   const filterPopoverRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const portalScopeProps = usePortalScopeProps();
 
   useEffect(() => {
     if (filterFocusTick === 0) return;
@@ -37,7 +55,8 @@ export function Toolbar({
 
   useLayoutEffect(() => {
     if (!filterOpen) return;
-    filterWrapRef.current?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    const anchor = filterWrapRef.current;
+    if (anchor !== null) setPopoverBox(placePopover(anchor));
     const input = searchInputRef.current;
     input?.focus();
     input?.select();
@@ -51,11 +70,22 @@ export function Toolbar({
       if (filterPopoverRef.current?.contains(event.target)) return;
       setFilterOpen(false);
     }
+    function onReposition() {
+      const anchor = filterWrapRef.current;
+      if (anchor !== null) setPopoverBox(placePopover(anchor));
+    }
     document.addEventListener("pointerdown", onPointerDown);
-    return () => document.removeEventListener("pointerdown", onPointerDown);
+    window.addEventListener("resize", onReposition);
+    window.addEventListener("scroll", onReposition, true);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("resize", onReposition);
+      window.removeEventListener("scroll", onReposition, true);
+    };
   }, [filterOpen]);
 
   const filterActive = query !== "";
+  const portalTarget = typeof document === "undefined" ? null : document.body;
 
   return (
     <div
@@ -83,37 +113,49 @@ export function Toolbar({
         </Button>
       </div>
 
-      {filterOpen ? (
-        <div
-          ref={filterPopoverRef}
-          role="dialog"
-          aria-label="Filter this folder"
-          className="absolute right-3 top-[calc(100%-2px)] z-30 w-56 rounded-md border border-border bg-background p-2 shadow-md"
-        >
-          <Input
-            ref={searchInputRef}
-            type="search"
-            value={query}
-            data-testid="vault-search"
-            aria-label="Filter this folder"
-            placeholder="Filter…"
-            className="h-8 text-sm"
-            onChange={(event) => onQueryChange(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Escape") {
-                event.stopPropagation();
-                if (query !== "") {
-                  event.preventDefault();
-                  onQueryChange("");
-                } else {
-                  setFilterOpen(false);
-                  event.currentTarget.blur();
-                }
-              }
-            }}
-          />
-        </div>
-      ) : null}
+      {filterOpen && portalTarget !== null
+        ? createPortal(
+            <div
+              {...portalScopeProps}
+              ref={filterPopoverRef}
+              role="dialog"
+              aria-label="Filter this folder"
+              data-testid="vault-search-popover"
+              className="rounded-md border border-border bg-background p-2 shadow-md"
+              style={{
+                position: "fixed",
+                top: popoverBox.top,
+                left: popoverBox.left,
+                width: popoverBox.width,
+                zIndex: 80,
+              }}
+            >
+              <Input
+                ref={searchInputRef}
+                type="search"
+                value={query}
+                data-testid="vault-search"
+                aria-label="Filter this folder"
+                placeholder="Filter…"
+                className="h-8 text-sm"
+                onChange={(event) => onQueryChange(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") {
+                    event.stopPropagation();
+                    if (query !== "") {
+                      event.preventDefault();
+                      onQueryChange("");
+                    } else {
+                      setFilterOpen(false);
+                      event.currentTarget.blur();
+                    }
+                  }
+                }}
+              />
+            </div>,
+            portalTarget,
+          )
+        : null}
     </div>
   );
 }

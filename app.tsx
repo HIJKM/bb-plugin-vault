@@ -8,6 +8,7 @@ import {
 } from "@get-bb/plugin-sdk/app";
 import { toast } from "sonner";
 
+import { DocumentEndSpace } from "@/components/DocumentEndSpace";
 import { SettingsSection } from "@/components/SettingsSection";
 import { Toolbar } from "@/components/Toolbar";
 import { Button } from "@/components/ui/button";
@@ -476,14 +477,15 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
                 className="m-4 h-full min-h-[24rem] w-[calc(100%-2rem)] rounded-md border border-border bg-background"
               />
             ) : doc.kind === "markdown" ? (
-              <div className="flex w-full justify-center px-4 pt-6 pb-24 sm:px-8 sm:pt-8 sm:pb-28">
+              <div className="flex w-full justify-center px-4 pt-6 sm:px-8 sm:pt-8">
                 <div className="w-full min-w-0 max-w-prose">
                   <Markdown content={doc.content} />
                 </div>
               </div>
             ) : (
-              <pre className="whitespace-pre-wrap break-all p-4 pb-24 font-mono text-sm leading-6">{doc.content}</pre>
+              <pre className="whitespace-pre-wrap break-all p-4 font-mono text-sm leading-6">{doc.content}</pre>
             )}
+            {doc.kind !== "html" ? <DocumentEndSpace /> : null}
           </div>
         </>
       )}
