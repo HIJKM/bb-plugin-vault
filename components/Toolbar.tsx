@@ -5,7 +5,6 @@ import { PathBar } from "@/components/PathBar";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { Input } from "@/components/ui/input";
-import type { FilterScope } from "@/lib/filter-scope";
 import { usePortalScopeProps } from "@/lib/portal-scope";
 import { cn } from "@/lib/utils";
 
@@ -18,7 +17,7 @@ function placePopover(
 ): { top: number; left: number; width: number } {
   const rect = anchor.getBoundingClientRect();
   const width = Math.min(POPOVER_WIDTH, Math.max(160, window.innerWidth - 16));
-  const height = popover?.offsetHeight ?? 88;
+  const height = popover?.offsetHeight ?? 48;
   const gap = 6;
   const maxLeft = window.innerWidth - width - 8;
   const left = Math.min(Math.max(8, rect.left - width - gap), Math.max(8, maxLeft));
@@ -35,8 +34,6 @@ export interface ToolbarProps {
   onNavigate: (path: string) => void;
   query: string;
   onQueryChange: (query: string) => void;
-  filterScope: FilterScope;
-  onFilterScopeChange: (scope: FilterScope) => void;
   filterFocusTick?: number;
 }
 
@@ -46,8 +43,6 @@ export function Toolbar({
   onNavigate,
   query,
   onQueryChange,
-  filterScope,
-  onFilterScopeChange,
   filterFocusTick = 0,
 }: ToolbarProps) {
   const [filterOpen, setFilterOpen] = useState(false);
@@ -169,30 +164,6 @@ export function Toolbar({
                   }
                 }}
               />
-              <div className="mt-1.5 grid grid-cols-2 gap-1" role="group" aria-label="검색 범위">
-                <Button
-                  type="button"
-                  variant={filterScope === "folder" ? "secondary" : "ghost"}
-                  size="sm"
-                  className="h-7 px-2 text-xs"
-                  aria-pressed={filterScope === "folder"}
-                  data-testid="vault-filter-scope-folder"
-                  onClick={() => onFilterScopeChange("folder")}
-                >
-                  이 폴더
-                </Button>
-                <Button
-                  type="button"
-                  variant={filterScope === "all" ? "secondary" : "ghost"}
-                  size="sm"
-                  className="h-7 px-2 text-xs"
-                  aria-pressed={filterScope === "all"}
-                  data-testid="vault-filter-scope-all"
-                  onClick={() => onFilterScopeChange("all")}
-                >
-                  전체 경로
-                </Button>
-              </div>
             </div>,
             portalTarget,
           )
