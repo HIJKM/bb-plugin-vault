@@ -41,6 +41,7 @@ import {
   ToolboxIcon,
   ToolCaseIcon,
   UserAdd01Icon,
+  ViewIcon,
   WorkflowCircle03Icon,
   ZapIcon,
 } from "@hugeicons/core-free-icons";
@@ -127,6 +128,7 @@ const CORE_ICON_MAP = {
   Copy: Copy01Icon,
   Download: Download01Icon,
   Edit: Edit02Icon,
+  Eye: ViewIcon,
   Folder: FolderIcon,
   FolderExport: FolderExportIcon,
   FolderGit: FolderGitTwoIcon,

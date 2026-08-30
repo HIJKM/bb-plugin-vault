@@ -2,12 +2,14 @@ import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, 
 import {
   Markdown,
   definePluginApp,
+  experimental_SourceCode as SourceCode,
   useBbNavigate,
   useRpc,
   type PluginNavPanelProps,
 } from "@get-bb/plugin-sdk/app";
 import { toast } from "sonner";
 
+import { DocViewToggle, type DocViewMode } from "@/components/DocViewToggle";
 import { DocumentEndSpace } from "@/components/DocumentEndSpace";
 import { FrontmatterPanel } from "@/components/FrontmatterPanel";
 import { ImagePreview } from "@/components/ImagePreview";
@@ -261,9 +263,14 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
   const [loadingIndex, setLoadingIndex] = useState(false);
   const [loadingDoc, setLoadingDoc] = useState(false);
   const [previewBaseUrl, setPreviewBaseUrl] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<DocViewMode>("preview");
 
   const vaultId = route.vaultId ?? vaults[0]?.id ?? null;
   const activePath = route.path;
+
+  useEffect(() => {
+    setViewMode("preview");
+  }, [activePath]);
   const viewingFile = activePath !== "" && isProbablyFile(activePath);
   const listFolder = viewingFile
     ? activePath.includes("/")
@@ -567,8 +574,13 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
       ) : (
         <>
           <div className="border-b border-border px-4 py-3">
-            <h1 className="truncate text-base font-medium">{fileLabel(doc.name)}</h1>
-            {doc.kind === "markdown" ? (
+            <div className="flex items-center gap-2">
+              <h1 className="min-w-0 flex-1 truncate text-base font-medium">{fileLabel(doc.name)}</h1>
+              {doc.kind === "markdown" || doc.kind === "html" ? (
+                <DocViewToggle mode={viewMode} onChange={setViewMode} />
+              ) : null}
+            </div>
+            {doc.kind === "markdown" && viewMode === "preview" ? (
               <FrontmatterPanel
                 fields={markdown.fields}
                 docPath={doc.path}
@@ -582,23 +594,27 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
             <ImagePreview url={doc.url} name={fileLabel(doc.name)} />
           ) : (
           <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain">
-            {doc.kind === "html" ? (
+            {doc.kind === "html" && viewMode === "preview" ? (
               <iframe
                 title={doc.name}
                 sandbox=""
                 srcDoc={doc.content}
                 className="m-4 h-full min-h-[24rem] w-[calc(100%-2rem)] rounded-md border border-border bg-background"
               />
-            ) : doc.kind === "markdown" ? (
+            ) : doc.kind === "markdown" && viewMode === "preview" ? (
               <div className="flex w-full justify-center px-4 pt-6 sm:px-8 sm:pt-8">
                 <div className="w-full min-w-0 max-w-prose" onClickCapture={onWikiClick}>
                   <Markdown content={markdown.body} />
                 </div>
               </div>
+            ) : doc.kind === "markdown" || doc.kind === "html" || doc.kind === "text" ? (
+              <div className="p-4">
+                <SourceCode content={doc.content} path={doc.path} overflow="wrap" />
+              </div>
             ) : (
               <pre className="whitespace-pre-wrap break-all p-4 font-mono text-sm leading-6">{doc.content}</pre>
             )}
-            {doc.kind !== "html" ? <DocumentEndSpace /> : null}
+            {!(doc.kind === "html" && viewMode === "preview") ? <DocumentEndSpace /> : null}
           </div>
           )}
         </>
