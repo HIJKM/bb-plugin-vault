@@ -13,7 +13,7 @@
     "name": "Vault",
     "description": "Read Docs vaults as rendered text. Never writes.",
     "branding": {
-      "icon": "FileText"
+      "icon": "./assets/icon.svg"
     },
     "server": "./server.ts",
     "app": "./app.tsx"
