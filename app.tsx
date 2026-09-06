@@ -9,6 +9,7 @@ import {
 } from "@get-bb/plugin-sdk/app";
 import { toast } from "sonner";
 
+import { BrandIcon } from "@/components/BrandIcon";
 import { withPanelSplash } from "@/components/PanelSplash";
 import { DocViewToggle, type DocViewMode } from "@/components/DocViewToggle";
 import { DocumentEndSpace } from "@/components/DocumentEndSpace";
@@ -705,7 +706,7 @@ export default definePluginApp((app) => {
     title: "Vault",
     icon: "FileText",
     path: PANEL_PATH,
-    component: withPanelSplash("Vault", DocsReaderPanel),
+    component: withPanelSplash("Vault", <BrandIcon className="size-9" />, DocsReaderPanel),
   });
 
   app.slots.settingsSection({

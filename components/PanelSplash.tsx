@@ -1,6 +1,14 @@
 import { useEffect, useState, type ComponentType, type ReactNode } from "react";
 
-export function PanelSplash({ title, children }: { title: string; children: ReactNode }) {
+export function PanelSplash({
+  title,
+  icon,
+  children,
+}: {
+  title: string;
+  icon: ReactNode;
+  children: ReactNode;
+}) {
   const [phase, setPhase] = useState<"enter" | "hold" | "reveal" | "done">("enter");
 
   useEffect(() => {
@@ -41,11 +49,11 @@ export function PanelSplash({ title, children }: { title: string; children: Reac
         >
           <div
             className={
-              "flex size-12 items-center justify-center rounded-2xl bg-foreground text-lg font-semibold tracking-tight text-background transition-transform duration-300 ease-out motion-reduce:transition-none " +
+              "flex size-14 items-center justify-center text-foreground transition-transform duration-300 ease-out motion-reduce:transition-none " +
               (phase === "enter" ? "scale-90" : phase === "hold" ? "scale-100" : "scale-110")
             }
           >
-            {title.slice(0, 1)}
+            {icon}
           </div>
           <p className="mt-3 text-sm font-medium text-foreground">{title}</p>
         </div>
@@ -56,11 +64,12 @@ export function PanelSplash({ title, children }: { title: string; children: Reac
 
 export function withPanelSplash<P extends object>(
   title: string,
+  icon: ReactNode,
   Component: ComponentType<P>,
 ): ComponentType<P> {
   function Splashed(props: P) {
     return (
-      <PanelSplash title={title}>
+      <PanelSplash title={title} icon={icon}>
         <Component {...props} />
       </PanelSplash>
     );
