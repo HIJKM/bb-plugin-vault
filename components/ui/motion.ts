@@ -3,11 +3,8 @@
  * timing language instead of ad-hoc per-component transitions:
  *
  * - CONTROL_HOVER_TRANSITION — interactive controls (buttons, icon buttons):
- *   the hover/active fill snaps IN instantly (0ms) and eases OUT lazily (150ms).
- *   Immediate feedback on the way in, never twitchy on the way out. The trick:
- *   CSS applies the *end state's* transition-duration for each direction, so a
- *   base `duration-150` governs hover-out while `hover:duration-0` makes
- *   hover-in instant.
+ *   color, fill, and press scale ease over 200ms both ways so hover does not
+ *   snap on and off.
  * - LIST_HOVER_TRANSITION — dense list/menu rows (menu items, list rows): no
  *   transition at all (instant both ways), so the highlight tracks the pointer
  *   and arrow keys exactly, with no lag during fast navigation.
@@ -16,6 +13,6 @@
  * a hover/active state.
  */
 export const CONTROL_HOVER_TRANSITION =
-  "transition-colors duration-150 hover:duration-0";
+  "transition-[color,background-color,border-color,box-shadow,transform,opacity] duration-200 ease-out motion-reduce:transition-none";
 
 export const LIST_HOVER_TRANSITION = "transition-none";
