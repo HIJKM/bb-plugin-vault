@@ -21,7 +21,8 @@
   "scripts": {
     "build": "env -u BB_CLI bb plugin build .",
     "dev": "bb plugin dev .",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node --experimental-strip-types --test lib/*.test.ts"
   },
   "dependencies": {
     "@hugeicons/core-free-icons": "^4.1.3",

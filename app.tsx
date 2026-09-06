@@ -10,6 +10,7 @@ import {
 import { toast } from "sonner";
 
 import { BrandIcon } from "@/components/BrandIcon";
+import { GraphView } from "@/components/GraphView";
 import { withPanelSplash } from "@/components/PanelSplash";
 import { DocViewToggle, type DocViewMode } from "@/components/DocViewToggle";
 import { DocumentEndSpace } from "@/components/DocumentEndSpace";
@@ -18,7 +19,7 @@ import { ImagePreview } from "@/components/ImagePreview";
 import { SettingsSection } from "@/components/SettingsSection";
 import { Toolbar } from "@/components/Toolbar";
 import { Button } from "@/components/ui/button";
-import { Icon } from "@/components/ui/icon";
+import { Icon, preloadExtendedIcons } from "@/components/ui/icon";
 import { useIsCompactViewport } from "@/components/ui/hooks/use-compact-viewport";
 import { isImageFileName } from "@/lib/image-file";
 import { cn } from "@/lib/utils";
@@ -27,6 +28,7 @@ import { parseFrontmatterFields, splitMarkdownFrontmatter, type FrontmatterField
 import { listScrollKey, readListScroll, writeListScroll } from "@/lib/session-list-scroll";
 import { readSessionRoute, writeSessionRoute } from "@/lib/session-route";
 import { rewriteVaultMarkdown } from "@/lib/vault-markdown";
+import type { GraphEdge, GraphNode } from "@/lib/note-graph";
 import { parseVaultLinkHref } from "@/lib/wiki-links";
 import type { rpcContract } from "./server";
 
@@ -274,6 +276,9 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
   const [loadingDoc, setLoadingDoc] = useState(false);
   const [previewBaseUrl, setPreviewBaseUrl] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<DocViewMode>("preview");
+  const [graphOpen, setGraphOpen] = useState(false);
+  const [graph, setGraph] = useState<{ nodes: GraphNode[]; edges: GraphEdge[] } | null>(null);
+  const [loadingGraph, setLoadingGraph] = useState(false);
 
   const vaultId = route.vaultId ?? vaults[0]?.id ?? null;
   const activePath = route.path;
@@ -281,6 +286,35 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
   useEffect(() => {
     setViewMode("preview");
   }, [activePath]);
+
+  useEffect(() => {
+    void preloadExtendedIcons();
+  }, []);
+
+  useEffect(() => {
+    setGraph(null);
+    setGraphOpen(false);
+  }, [vaultId]);
+
+  useEffect(() => {
+    if (!graphOpen || vaultId === null || graph !== null) return;
+    let cancelled = false;
+    setLoadingGraph(true);
+    void rpc
+      .call("graph", { vaultId })
+      .then((result) => {
+        if (!cancelled) setGraph({ nodes: result.nodes, edges: result.edges });
+      })
+      .catch((cause: unknown) => {
+        if (!cancelled) toast.error(errorText(cause, "그래프를 만들지 못했습니다."));
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingGraph(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [graph, graphOpen, rpc, vaultId]);
   const viewingFile = activePath !== "" && isProbablyFile(activePath);
   const listFolder = viewingFile
     ? activePath.includes("/")
@@ -529,6 +563,7 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
         query={query}
         onQueryChange={setQuery}
         filterFocusTick={filterFocusTick}
+        onOpenGraph={() => setGraphOpen(true)}
       />
       <div
         ref={listScrollerRef}
@@ -595,6 +630,17 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
           >
             <Icon name="ChevronLeft" className="size-4" />
             목록
+          </Button>
+          <span className="min-w-0 flex-1" />
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-7 w-7 p-0"
+            aria-label="그래프 보기"
+            onClick={() => setGraphOpen(true)}
+          >
+            <Icon name="GitBranch" className="size-3.5" />
           </Button>
         </div>
       ) : null}
@@ -663,6 +709,34 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
   );
 
   const showDetail = !compact || viewingFile;
+
+  if (graphOpen) {
+    return (
+      <div className="flex h-full min-h-0 flex-col bg-background text-foreground">
+        <div className="flex items-center gap-2 border-b border-border px-3 py-2">
+          <Button type="button" variant="ghost" size="sm" onClick={() => setGraphOpen(false)}>
+            <Icon name="ChevronLeft" className="size-4" />
+            닫기
+          </Button>
+          <h1 className="min-w-0 flex-1 truncate text-sm font-medium">그래프</h1>
+        </div>
+        {loadingGraph && graph === null ? (
+          <p className="p-6 text-sm text-muted-foreground">그래프를 그리는 중…</p>
+        ) : (
+          <GraphView
+            nodes={graph?.nodes ?? []}
+            edges={graph?.edges ?? []}
+            activePath={activePath}
+            onOpen={(path) => {
+              if (vaultId === null) return;
+              setGraphOpen(false);
+              goTo(vaultId, path);
+            }}
+          />
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className={cn("flex h-full min-h-0 bg-background text-foreground", resizing ? "select-none" : "")}>

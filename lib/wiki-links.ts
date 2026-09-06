@@ -145,6 +145,19 @@ export function rewriteWikiLinks(source: string, entries: readonly WikiEntry[]):
   return mapMarkdownPlain(source, (text) => rewriteWikiLinkText(text, entries));
 }
 
+/** Wiki targets outside code, in document order. */
+export function extractWikiTargets(source: string): string[] {
+  const found: string[] = [];
+  mapMarkdownPlain(source, (text) => {
+    for (const match of text.matchAll(WIKI_LINK)) {
+      const target = match[1]?.trim() ?? "";
+      if (target !== "") found.push(target);
+    }
+    return text;
+  });
+  return found;
+}
+
 export function parseVaultLinkHref(href: string | null | undefined): string | null {
   if (href === null || href === undefined || href === "") return null;
   const hashIndex = href.indexOf("#");

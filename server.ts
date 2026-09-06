@@ -5,6 +5,7 @@ import { DatabaseSync } from "node:sqlite";
 import { defineRpcContract, type BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 
+import { buildNoteGraph } from "./lib/note-graph";
 import { joinPreviewUrl } from "./lib/preview-url";
 import { parseRawArchiveJsonl, RAW_ARCHIVE_RELATIVE } from "./lib/raw-archive";
 
@@ -82,6 +83,16 @@ export const rpcContract = defineRpcContract({
       })
       .strict(),
   },
+  graph: {
+    input: z.object({ vaultId: z.string().min(1) }).strict(),
+    output: z
+      .object({
+        vaultId: z.string(),
+        nodes: z.array(z.object({ path: z.string(), name: z.string() }).strict()),
+        edges: z.array(z.object({ from: z.string(), to: z.string() }).strict()),
+      })
+      .strict(),
+  },
   previewRoot: {
     input: z.object({ vaultId: z.string().min(1) }).strict(),
     output: z
@@ -95,12 +106,18 @@ export const rpcContract = defineRpcContract({
 });
 
 const INDEX_TTL_MS = 60_000;
+const GRAPH_MAX_NOTES = 600;
+const GRAPH_MAX_CHARS = 120_000;
 
 type CachedVaults = { at: number; vaults: z.infer<typeof vaultSchema>[] };
 type CachedIndex = { at: number; entries: z.infer<typeof entrySchema>[]; rawArchive: Record<string, string> };
 
 let vaultsCache: CachedVaults | null = null;
 const indexCache = new Map<string, CachedIndex>();
+const graphCache = new Map<
+  string,
+  { at: number; nodes: { path: string; name: string }[]; edges: { from: string; to: string }[] }
+>();
 const previewCache = new Map<string, { baseUrl: string; expiresAtMs: number }>();
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -130,6 +147,11 @@ function displayName(path: string, kind: "file" | "directory"): string {
 
 function isDocFile(path: string): boolean {
   return DOC_EXT.test(basename(path));
+}
+
+function isMarkdownFile(path: string): boolean {
+  const lower = basename(path).toLowerCase();
+  return lower.endsWith(".md") || lower.endsWith(".markdown");
 }
 
 function isImageFile(path: string): boolean {
@@ -379,6 +401,25 @@ export default async function plugin(bb: BbPluginApi) {
     return vault;
   }
 
+  async function listVaultEntries(vault: z.infer<typeof vaultSchema>): Promise<z.infer<typeof entrySchema>[]> {
+    const listed = await bb.sdk.files.listPaths({
+      path: vault.rootPath,
+      hostId: vault.hostId ?? undefined,
+      includeFiles: true,
+      includeDirectories: true,
+      limit: 10_000,
+    });
+    const entries: z.infer<typeof entrySchema>[] = [];
+    for (const row of listed.paths) {
+      const relative = toRelative(vault.rootPath, row.path);
+      if (relative === "" || relative.split("/").some((part) => part.startsWith("."))) continue;
+      const kind = entryKind(row.kind);
+      if (kind === "file" && !isListedFile(relative)) continue;
+      entries.push({ kind, path: relative, name: displayName(relative, kind) });
+    }
+    return entries;
+  }
+
   async function loadRawArchive(vault: z.infer<typeof vaultSchema>): Promise<Record<string, string>> {
     try {
       const file = await bb.sdk.files.read({
@@ -458,27 +499,53 @@ export default async function plugin(bb: BbPluginApi) {
       return { vaults: await loadVaults(true) };
     },
 
+    async graph({ vaultId }) {
+      const cached = graphCache.get(vaultId);
+      if (cached !== undefined && Date.now() - cached.at < INDEX_TTL_MS) {
+        return { vaultId, nodes: cached.nodes, edges: cached.edges };
+      }
+      const vault = await vaultById(vaultId);
+      const entries = await listVaultEntries(vault);
+      const markdown = entries
+        .filter((entry) => entry.kind === "file" && isMarkdownFile(entry.path))
+        .slice(0, GRAPH_MAX_NOTES);
+      const notes: { path: string; name: string; content: string }[] = [];
+      let cursor = 0;
+      const workers = Array.from({ length: Math.min(8, Math.max(1, markdown.length)) }, async () => {
+        while (cursor < markdown.length) {
+          const index = cursor;
+          cursor += 1;
+          const entry = markdown[index]!;
+          try {
+            const file = await bb.sdk.files.read({
+              path: joinRoot(vault.rootPath, entry.path),
+              rootPath: vault.rootPath,
+              hostId: vault.hostId ?? undefined,
+            });
+            let content =
+              file.contentEncoding === "base64"
+                ? Buffer.from(file.content, "base64").toString("utf8")
+                : file.content;
+            if (content.length > GRAPH_MAX_CHARS) content = content.slice(0, GRAPH_MAX_CHARS);
+            notes[index] = { path: entry.path, name: entry.name, content };
+          } catch {
+            notes[index] = { path: entry.path, name: entry.name, content: "" };
+          }
+        }
+      });
+      await Promise.all(workers);
+      const graph = buildNoteGraph(notes.filter(Boolean), entries);
+      graphCache.set(vaultId, { at: Date.now(), nodes: graph.nodes, edges: graph.edges });
+      return { vaultId, nodes: graph.nodes, edges: graph.edges };
+    },
+
     async listIndex({ vaultId }) {
       const cached = indexCache.get(vaultId);
       if (cached !== undefined && Date.now() - cached.at < INDEX_TTL_MS) {
         return { vaultId, entries: cached.entries, rawArchive: cached.rawArchive };
       }
       const vault = await vaultById(vaultId);
-      const listed = await bb.sdk.files.listPaths({
-        path: vault.rootPath,
-        hostId: vault.hostId ?? undefined,
-        includeFiles: true,
-        includeDirectories: true,
-        limit: 10_000,
-      });
-      const entries: z.infer<typeof entrySchema>[] = [];
-      for (const row of listed.paths) {
-        const relative = toRelative(vault.rootPath, row.path);
-        if (relative === "" || relative.split("/").some((part) => part.startsWith("."))) continue;
-        const kind = entryKind(row.kind);
-        if (kind === "file" && !isListedFile(relative)) continue;
-        entries.push({ kind, path: relative, name: displayName(relative, kind) });
-      }
+      const entries = await listVaultEntries(vault);
       const rawArchive = await loadRawArchive(vault);
       indexCache.set(vaultId, { at: Date.now(), entries, rawArchive });
       return { vaultId, entries, rawArchive };

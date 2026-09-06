@@ -35,6 +35,7 @@ export interface ToolbarProps {
   query: string;
   onQueryChange: (query: string) => void;
   filterFocusTick?: number;
+  onOpenGraph?: () => void;
 }
 
 export function Toolbar({
@@ -44,6 +45,7 @@ export function Toolbar({
   query,
   onQueryChange,
   filterFocusTick = 0,
+  onOpenGraph,
 }: ToolbarProps) {
   const [filterOpen, setFilterOpen] = useState(false);
   const [popoverBox, setPopoverBox] = useState({ top: 0, left: 0, width: POPOVER_WIDTH });
@@ -102,6 +104,20 @@ export function Toolbar({
       className="relative flex shrink-0 items-center gap-1.5 border-b border-border px-3 py-2"
     >
       <PathBar folder={folder} rootLabel={rootLabel} onNavigate={onNavigate} />
+
+      {onOpenGraph ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className={ACTION_BUTTON_CLASS}
+          aria-label="그래프 보기"
+          data-testid="vault-graph"
+          onClick={onOpenGraph}
+        >
+          <Icon name="GitBranch" className="size-3.5" aria-hidden="true" />
+        </Button>
+      ) : null}
 
       <div className="relative shrink-0" ref={filterWrapRef} title="필터검색 (Ctrl+F)">
         <Button
