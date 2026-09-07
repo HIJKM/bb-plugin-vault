@@ -24,6 +24,7 @@ import {
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 const SELECTED_NODE_COLOR = "#8b5cf6";
 const INFO_TRANSITION_MS = 180;
+const HOVER_EDGE_MS = 240;
 const MAX_GRAPH_ZOOM = 8;
 type Point = { x: number; y: number };
 type Controls = {
@@ -265,13 +266,15 @@ export function GraphView({
     let disposed = false;
     let inViewport = true;
     let hover = -1;
+    let hoverStarted = 0;
+    let hoverEdges: typeof layout.edges = [];
     let selected = -1;
     let infoIndex = -1;
     let projected: ProjectedGraphNode[] = [];
     const labelText = new Map<number, { title: string; width: number }>();
     const labelStarts = new Map<number, number>();
     const order = nodes.map((_, index) => index);
-    let focusKey = "";
+    let focusedNode = -2;
     let focusedEdges: typeof layout.edges = [];
     const pointers = new Map<number, Point>();
     let drag: { id: number; start: Point; last: Point; moved: boolean; pan: boolean; hit: number } | null = null;
@@ -284,10 +287,19 @@ export function GraphView({
     function requestDraw() {
       if (raf === null && canDraw()) raf = window.requestAnimationFrame(paint);
     }
+    function setHover(next: number) {
+      if (next === hover) return;
+      hover = next;
+      hoverStarted = performance.now();
+      hoverEdges = next < 0 ? [] : layout.edges.filter(({ from, to }) => from === next || to === next);
+      requestDraw();
+    }
     function pause() {
       if (raf !== null) window.cancelAnimationFrame(raf);
       raf = null;
       labelStarts.clear();
+      hover = -1;
+      hoverEdges = [];
     }
     function readPalette() {
       const style = getComputedStyle(canvas!);
@@ -300,6 +312,7 @@ export function GraphView({
       requestDraw();
     }
     function resize() {
+      setHover(-1);
       width = wrap!.clientWidth;
       height = wrap!.clientHeight;
       labelText.clear();
@@ -374,19 +387,17 @@ export function GraphView({
       ctx!.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx!.clearRect(0, 0, width, height);
       const active = selected >= 0 ? selected : indices.get(propsRef.current.activePath) ?? -1;
-      const edgeHover = selected >= 0 ? -1 : hover;
-      const nextFocusKey = `${active}:${edgeHover}`;
-      if (nextFocusKey !== focusKey) {
-        focusKey = nextFocusKey;
-        focusedEdges = layout.edges.filter(({ from, to }) => from === active || to === active || from === edgeHover || to === edgeHover);
+      if (active !== focusedNode) {
+        focusedNode = active;
+        focusedEdges = layout.edges.filter(({ from, to }) => from === active || to === active);
       }
-      function line(edge: (typeof layout.edges)[number]) {
-        const from = projected[edge.from];
-        const to = projected[edge.to];
+      function line(edge: (typeof layout.edges)[number], origin = edge.from, progress = 1) {
+        const from = projected[origin];
+        const to = projected[origin === edge.from ? edge.to : edge.from];
         if ((from.x < 0 && to.x < 0) || (from.x > width && to.x > width)
           || (from.y < 0 && to.y < 0) || (from.y > height && to.y > height)) return;
         ctx!.moveTo(from.x, from.y);
-        ctx!.lineTo(to.x, to.y);
+        ctx!.lineTo(from.x + (to.x - from.x) * progress, from.y + (to.y - from.y) * progress);
       }
       ctx!.globalAlpha = selected >= 0 ? 0.12 : 0.45;
       ctx!.strokeStyle = palette.edge;
@@ -399,6 +410,16 @@ export function GraphView({
       ctx!.beginPath();
       for (const edge of focusedEdges) line(edge);
       ctx!.stroke();
+      const hoverProgress = hover < 0 || motionPreference.matches ? 1 : clamp((time - hoverStarted) / HOVER_EDGE_MS, 0, 1);
+      const hoverAnimating = hoverEdges.length > 0 && hoverProgress < 1;
+      if (hoverEdges.length > 0) {
+        // 기존 선택 간선은 유지하고 hover한 점에서 이웃 쪽으로 강조를 덧그린다.
+        const progress = 1 - (1 - hoverProgress) ** 3;
+        ctx!.globalAlpha = 0.65;
+        ctx!.beginPath();
+        for (const edge of hoverEdges) line(edge, hover, progress);
+        ctx!.stroke();
+      }
       for (const index of order) {
         const point = projected[index];
         if (!point.visible) continue;
@@ -501,7 +522,7 @@ export function GraphView({
         resize();
       }
       // 배치와 짧은 등장 효과가 끝나면 RAF 자체를 멈춘다.
-      if (labelsAnimating || (step < maxSteps && pointers.size === 0 && selected < 0)) requestDraw();
+      if (hoverAnimating || labelsAnimating || (step < maxSteps && pointers.size === 0 && selected < 0)) requestDraw();
     }
 
     function localPoint(event: { clientX: number; clientY: number }): Point {
@@ -519,6 +540,7 @@ export function GraphView({
     }
     function zoom(factor: number, point: Point = { x: width / 2, y: height / 2 }) {
       infoFocusRef.current = false;
+      setHover(-1);
       const next = clamp(camera.scale * factor, 0.35, MAX_GRAPH_ZOOM);
       const ratio = next / camera.scale;
       camera.x = point.x - width / 2 - (point.x - width / 2 - camera.x) * ratio;
@@ -529,7 +551,7 @@ export function GraphView({
     function reset() {
       infoFocusRef.current = false;
       camera = { ...DEFAULT_GRAPH_CAMERA };
-      hover = -1;
+      setHover(-1);
       requestDraw();
     }
     function pinchPoints() {
@@ -546,6 +568,7 @@ export function GraphView({
       const point = localPoint(event);
       pointers.set(event.pointerId, point);
       if (pointers.size >= 2) {
+        setHover(-1);
         drag = null;
         pinch = pointers.size === 2 ? { ...pinchPoints(), scale: camera.scale, x: camera.x, y: camera.y } : null;
       } else {
@@ -555,8 +578,7 @@ export function GraphView({
     function pointerMove(event: globalThis.PointerEvent) {
       const point = localPoint(event);
       if (!pointers.has(event.pointerId)) {
-        const next = hit(point);
-        if (next !== hover) { hover = next; requestDraw(); }
+        setHover(hit(point));
         return;
       }
       pointers.set(event.pointerId, point);
@@ -567,7 +589,7 @@ export function GraphView({
         camera.scale = next;
         camera.x = current.center.x - width / 2 - (pinch.center.x - width / 2 - pinch.x) * ratio;
         camera.y = current.center.y - height / 2 - (pinch.center.y - height / 2 - pinch.y) * ratio;
-        hover = -1;
+        setHover(-1);
         requestDraw();
         return;
       }
@@ -578,7 +600,7 @@ export function GraphView({
         const dy = point.y - drag.last.y;
         if (drag.pan) { camera.x += dx; camera.y += dy; }
         else rotateGraphCamera(camera, dx, dy);
-        hover = -1;
+        setHover(-1);
         requestDraw();
       }
       drag.last = point;
@@ -604,7 +626,7 @@ export function GraphView({
       if (clicked !== null) selectInfo(clicked);
     }
     function pointerLeave() {
-      if (hover !== -1) { hover = -1; requestDraw(); }
+      setHover(-1);
     }
     function wheel(event: globalThis.WheelEvent) {
       event.preventDefault();
@@ -626,6 +648,7 @@ export function GraphView({
       event.preventDefault();
       event.stopPropagation();
       infoFocusRef.current = false;
+      setHover(-1);
       requestDraw();
     }
     function escapeInfo(event: globalThis.KeyboardEvent) {
