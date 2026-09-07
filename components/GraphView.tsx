@@ -430,7 +430,7 @@ export function GraphView({
       const shownLabels = new Set<number>();
       let labelsAnimating = false;
       function label(index: number) {
-        if (index === infoIndex) return;
+        if (index === infoIndex || (selected >= 0 && index !== selected)) return;
         const point = projected[index];
         let text = labelText.get(index);
         if (!text) {
