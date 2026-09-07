@@ -10,7 +10,7 @@ import {
   stepGraphLayout,
   type ProjectedGraphNode,
 } from "@/lib/graph-layout";
-import { countGraphConnections, graphDepthColor, GRAPH_DEPTH_COLORS } from "@/lib/graph-presentation";
+import { countGraphConnections, graphDepthAppearance, GRAPH_DEPTH_APPEARANCES, GRAPH_DEPTH_COLORS } from "@/lib/graph-presentation";
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 type Point = { x: number; y: number };
@@ -94,6 +94,25 @@ export function GraphView({
     const layout = createGraphLayout(nodes, edges);
     const connections = countGraphConnections(layout.edges, nodes.length);
     const indices = new Map(nodes.map((node, index) => [node.path, index]));
+    // 작은 점 이미지를 한 번 만들어 재사용해 매 프레임 흐림 필터를 계산하지 않는다.
+    const depthSprites = new Map<string, { image: HTMLCanvasElement; size: number }>();
+    for (const { color, blur } of GRAPH_DEPTH_APPEARANCES) {
+      if (blur === 0) continue;
+      const outerRadius = 2 + blur * 2;
+      const image = document.createElement("canvas");
+      image.width = image.height = Math.ceil((outerRadius + 1) * 4);
+      const sprite = image.getContext("2d");
+      if (sprite === null) continue;
+      const size = image.width / 2;
+      sprite.setTransform(2, 0, 0, 2, image.width / 2, image.height / 2);
+      const gradient = sprite.createRadialGradient(0, 0, 2 - blur, 0, 0, outerRadius);
+      gradient.addColorStop(0, color);
+      gradient.addColorStop(1 / 3, `${color}80`);
+      gradient.addColorStop(1, `${color}00`);
+      sprite.fillStyle = gradient;
+      sprite.fillRect(-size / 2, -size / 2, size, size);
+      depthSprites.set(color, { image, size });
+    }
     const coarse = window.matchMedia("(pointer: coarse)").matches;
     const edgeBudget = coarse ? 1800 : 4000;
     const labelBudget = coarse ? 24 : 48;
@@ -224,11 +243,18 @@ export function GraphView({
         const point = projected[index];
         if (!point.visible) continue;
         const focused = index === active || index === hover;
-        ctx!.globalAlpha = focused ? 1 : clamp(point.perspective - 0.25, 0.5, 1);
-        ctx!.fillStyle = graphDepthColor(point.depth);
-        ctx!.beginPath();
-        ctx!.arc(point.x, point.y, radius(index), 0, Math.PI * 2);
-        ctx!.fill();
+        const appearance = graphDepthAppearance(point.depth);
+        const sprite = focused ? undefined : depthSprites.get(appearance.color);
+        ctx!.globalAlpha = focused ? 1 : appearance.opacity;
+        if (sprite) {
+          const size = sprite.size * radius(index) / 2;
+          ctx!.drawImage(sprite.image, point.x - size / 2, point.y - size / 2, size, size);
+        } else {
+          ctx!.fillStyle = appearance.color;
+          ctx!.beginPath();
+          ctx!.arc(point.x, point.y, radius(index), 0, Math.PI * 2);
+          ctx!.fill();
+        }
         if (focused) {
           ctx!.strokeStyle = palette.accent;
           ctx!.lineWidth = 1;
@@ -257,6 +283,7 @@ export function GraphView({
         }
         if (!priority && cells.some((cell) => occupied.has(cell))) return;
         cells.forEach((cell) => occupied.add(cell));
+        ctx!.globalAlpha = priority ? 1 : graphDepthAppearance(point.depth).opacity;
         ctx!.fillText(title, x, y);
         labels++;
       }

@@ -7,10 +7,26 @@ export const GRAPH_DEPTH_COLORS: readonly string[] = [
   "#b77585", "#bf7675", "#c77765", "#ce7855", "#d67945",
 ];
 
-export function graphDepthColor(depth: number): string {
+export type GraphDepthAppearance = Readonly<{ color: string; opacity: number; blur: number }>;
+
+export const GRAPH_DEPTH_APPEARANCES: readonly GraphDepthAppearance[] = GRAPH_DEPTH_COLORS.map((color, index) => {
+  const near = index / (GRAPH_DEPTH_COLORS.length - 1);
+  return {
+    color,
+    opacity: near <= 0.5 ? 0.18 + 0.74 * near : 0.55 + 0.9 * (near - 0.5),
+    // 기본 반경 2px에서 사용하는 CSS px 값이며 가까운 1/3은 선명하게 유지한다.
+    blur: near <= 0.5 ? 1.2 - 1.4 * near : Math.max(0, 0.5 - 3 * (near - 0.5)),
+  };
+});
+
+export function graphDepthAppearance(depth: number): GraphDepthAppearance {
   const normalized = Math.max(-1, Math.min(1, depth / GRAPH_WORLD_RADIUS));
   const index = Math.round((normalized + 1) * (GRAPH_DEPTH_COLORS.length - 1) / 2);
-  return GRAPH_DEPTH_COLORS[index];
+  return GRAPH_DEPTH_APPEARANCES[index];
+}
+
+export function graphDepthColor(depth: number): string {
+  return graphDepthAppearance(depth).color;
 }
 
 export function countGraphConnections(edges: readonly LayoutEdge[], nodeCount: number): Uint32Array {
