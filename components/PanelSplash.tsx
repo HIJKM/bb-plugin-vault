@@ -27,7 +27,7 @@ export function PanelSplash({
   }, []);
 
   return (
-    <div className="relative h-full min-h-0">
+    <div data-no-sidebar-swipe="" className="relative h-full min-h-0">
       <div
         className={
           phase === "enter" || phase === "hold"
