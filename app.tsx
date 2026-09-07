@@ -720,7 +720,7 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
     return (
       <div
         ref={panelRef}
-        className="flex h-full min-h-0 flex-col overscroll-x-none bg-background touch-pan-y text-foreground"
+        className="flex h-full min-h-0 flex-col bg-background text-foreground"
       >
         <div className="flex items-center gap-2 border-b border-border px-3 py-2">
           <Button type="button" variant="ghost" size="sm" onClick={() => setGraphOpen(false)}>
@@ -751,7 +751,7 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
     <div
       ref={panelRef}
       className={cn(
-        "flex h-full min-h-0 overscroll-x-none bg-background touch-pan-y text-foreground",
+        "flex h-full min-h-0 bg-background text-foreground",
         resizing ? "select-none" : "",
       )}
     >

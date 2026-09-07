@@ -1,10 +1,11 @@
 import { useEffect, type RefObject } from "react";
 
+const EDGE_PX = 32;
+
 /**
- * The host drawer opens on a horizontal pan. Cancel that gesture as soon as a
- * touch inside this panel is more horizontal than vertical, and never wait for
- * an edge threshold — iOS reports a wide layout viewport so "compact" is not
- * a reliable gate.
+ * Block only the host sidebar-drawer gesture (a horizontal pan that starts at
+ * the leading screen/panel edge). Do not set touch-action: pan-y on the panel
+ * root — that intersects with child pan-x and kills editor/canvas scrolling.
  */
 export function useBlockHostSwipe(rootRef: RefObject<HTMLElement | null>, enabled: boolean): void {
   useEffect(() => {
@@ -27,17 +28,13 @@ export function useBlockHostSwipe(rootRef: RefObject<HTMLElement | null>, enable
 
     const begin = (clientX: number, clientY: number, target: EventTarget | null) => {
       const root = rootRef.current;
-      if (
-        root === null ||
-        !(target instanceof Node) ||
-        !root.contains(target) ||
-        allowsOwnPan(target)
-      ) {
+      if (root === null || !(target instanceof Node) || !root.contains(target) || allowsOwnPan(target)) {
         tracking = false;
         locked = null;
         return;
       }
-      tracking = true;
+      const localX = clientX - root.getBoundingClientRect().left;
+      tracking = clientX <= EDGE_PX || localX <= EDGE_PX;
       locked = null;
       startX = clientX;
       startY = clientY;
@@ -47,7 +44,7 @@ export function useBlockHostSwipe(rootRef: RefObject<HTMLElement | null>, enable
       if (!tracking) return;
       const dx = clientX - startX;
       const dy = clientY - startY;
-      if (locked === null && (Math.abs(dx) > 4 || Math.abs(dy) > 4)) {
+      if (locked === null && (Math.abs(dx) > 3 || Math.abs(dy) > 3)) {
         locked = Math.abs(dx) >= Math.abs(dy) ? "h" : "v";
       }
       if (locked !== "h") return;
