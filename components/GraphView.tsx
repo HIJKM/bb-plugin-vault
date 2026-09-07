@@ -69,7 +69,7 @@ export function GraphView({
     const pointers = new Map<number, Point>();
     let drag: { id: number; start: Point; last: Point; moved: boolean; pan: boolean; hit: number } | null = null;
     let pinch: { distance: number; center: Point; scale: number; x: number; y: number } | null = null;
-    let palette = { edge: "#888", ink: "#111", muted: "#666", accent: "#4f46e5" };
+    let palette = { edge: "#888", ink: "#111", accent: "#4f46e5" };
 
     function canDraw() {
       return !disposed && !document.hidden && inViewport && width > 0 && height > 0;
@@ -87,7 +87,6 @@ export function GraphView({
       palette = {
         edge: color("--border", "#888"),
         ink: color("--foreground", "#111"),
-        muted: color("--muted-foreground", "#666"),
         accent: color("--primary", "#4f46e5"),
       };
       requestDraw();
@@ -101,7 +100,7 @@ export function GraphView({
       requestDraw();
     }
     function radius(index: number) {
-      return clamp(4.5 * projected[index].perspective * Math.sqrt(camera.scale), 2.5, 10);
+      return clamp(2 * projected[index].perspective * camera.scale ** 0.2, 1, 3.2);
     }
     function paint(time: number) {
       raf = null;
@@ -152,10 +151,10 @@ export function GraphView({
         const point = projected[index];
         if (!point.visible) continue;
         const focused = index === active || index === hover;
-        ctx!.globalAlpha = focused ? 1 : clamp(point.perspective - 0.4, 0.3, 0.9);
-        ctx!.fillStyle = focused ? palette.accent : palette.muted;
+        ctx!.globalAlpha = focused ? 1 : clamp(point.perspective - 0.25, 0.5, 1);
+        ctx!.fillStyle = focused ? palette.accent : palette.ink;
         ctx!.beginPath();
-        ctx!.arc(point.x, point.y, radius(index) + (focused ? 2 : 0), 0, Math.PI * 2);
+        ctx!.arc(point.x, point.y, radius(index) + (focused ? 0.8 : 0), 0, Math.PI * 2);
         ctx!.fill();
       }
       ctx!.globalAlpha = 1;
