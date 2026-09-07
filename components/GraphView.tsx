@@ -24,6 +24,7 @@ import {
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 const SELECTED_NODE_COLOR = "#8b5cf6";
 const INFO_TRANSITION_MS = 180;
+const MAX_GRAPH_ZOOM = 8;
 type Point = { x: number; y: number };
 type Controls = {
   redraw: () => void;
@@ -52,6 +53,7 @@ export function GraphView({
   const infoAnchorRef = useRef<(Point & { radius: number }) | null>(null);
   const infoExitRef = useRef<((afterClose: () => void) => void) | null>(null);
   const infoExitingRef = useRef(false);
+  const infoFocusRef = useRef(false);
   const controlsRef = useRef<Controls | null>(null);
   const propsRef = useRef({ activePath, onOpen });
   propsRef.current = { activePath, onOpen };
@@ -121,7 +123,7 @@ export function GraphView({
         panel.style.transform = "none";
         panel.style.pointerEvents = "auto";
         panel.inert = false;
-        panel.focus({ preventScroll: true });
+        if (infoFocusRef.current) panel.focus({ preventScroll: true });
         panelAnimation?.cancel();
       };
       if (reducedMotion) { finish(); return; }
@@ -264,6 +266,7 @@ export function GraphView({
     let inViewport = true;
     let hover = -1;
     let selected = -1;
+    let infoIndex = -1;
     let projected: ProjectedGraphNode[] = [];
     const labelText = new Map<number, { title: string; width: number }>();
     const labelStarts = new Map<number, number>();
@@ -309,8 +312,8 @@ export function GraphView({
       return clamp(2 * projected[index].perspective * camera.scale ** 0.2, 1, 3.2);
     }
     function dismissInfo(restoreFocus = false) {
-      if (selected < 0 && infoExitRef.current === null) return;
-      selected = -1;
+      if (infoIndex < 0 && infoExitRef.current === null) return;
+      infoIndex = -1;
       if (restoreFocus) canvas!.focus({ preventScroll: true });
       const close = () => {
         if (disposed) return;
@@ -324,11 +327,19 @@ export function GraphView({
       requestDraw();
     }
     function selectInfo(index: number) {
-      if (index < 0) { dismissInfo(); return; }
-      if (index === selected) return;
+      // 빈 공간을 탭할 때만 선택을 해제해 원래 파일 강조로 돌아간다.
+      if (index < 0) {
+        selected = -1;
+        dismissInfo();
+        requestDraw();
+        return;
+      }
+      if (index === infoIndex) return;
       selected = index;
+      infoIndex = index;
+      infoFocusRef.current = true;
       const show = () => {
-        if (disposed || selected !== index) return;
+        if (disposed || selected !== index || infoIndex !== index) return;
         infoAnchorRef.current = { ...projected[index], radius: radius(index) };
         setInfo({ ...nodes[index], connections: connections[index], color: SELECTED_NODE_COLOR });
         requestDraw();
@@ -354,8 +365,8 @@ export function GraphView({
       }
       const project = createGraphProjection(camera, width, height);
       projected = layout.nodes.map(project);
-      if (selected >= 0 && !infoExitingRef.current) {
-        infoAnchorRef.current = { ...projected[selected], radius: radius(selected) };
+      if (infoIndex >= 0 && !infoExitingRef.current) {
+        infoAnchorRef.current = { ...projected[infoIndex], radius: radius(infoIndex) };
         positionInfo();
       }
       order.sort((a, b) => projected[a].depth - projected[b].depth);
@@ -419,7 +430,7 @@ export function GraphView({
       const shownLabels = new Set<number>();
       let labelsAnimating = false;
       function label(index: number) {
-        if (index === selected) return;
+        if (index === infoIndex) return;
         const point = projected[index];
         let text = labelText.get(index);
         if (!text) {
@@ -506,8 +517,8 @@ export function GraphView({
       return -1;
     }
     function zoom(factor: number, point: Point = { x: width / 2, y: height / 2 }) {
-      dismissInfo();
-      const next = clamp(camera.scale * factor, 0.35, 4);
+      infoFocusRef.current = false;
+      const next = clamp(camera.scale * factor, 0.35, MAX_GRAPH_ZOOM);
       const ratio = next / camera.scale;
       camera.x = point.x - width / 2 - (point.x - width / 2 - camera.x) * ratio;
       camera.y = point.y - height / 2 - (point.y - height / 2 - camera.y) * ratio;
@@ -515,7 +526,7 @@ export function GraphView({
       requestDraw();
     }
     function reset() {
-      dismissInfo();
+      infoFocusRef.current = false;
       camera = { ...DEFAULT_GRAPH_CAMERA };
       hover = -1;
       requestDraw();
@@ -527,12 +538,13 @@ export function GraphView({
     function pointerDown(event: globalThis.PointerEvent) {
       if (event.button !== 0) return;
       event.stopPropagation();
+      // 진입 효과 도중 다시 조작하면 툴팁이 캔버스 초점을 가져가지 않는다.
+      infoFocusRef.current = false;
       canvas!.focus({ preventScroll: true });
       canvas!.setPointerCapture(event.pointerId);
       const point = localPoint(event);
       pointers.set(event.pointerId, point);
       if (pointers.size >= 2) {
-        dismissInfo();
         drag = null;
         pinch = pointers.size === 2 ? { ...pinchPoints(), scale: camera.scale, x: camera.x, y: camera.y } : null;
       } else {
@@ -549,7 +561,7 @@ export function GraphView({
       pointers.set(event.pointerId, point);
       if (pointers.size === 2 && pinch !== null) {
         const current = pinchPoints();
-        const next = clamp(pinch.scale * current.distance / pinch.distance, 0.35, 4);
+        const next = clamp(pinch.scale * current.distance / pinch.distance, 0.35, MAX_GRAPH_ZOOM);
         const ratio = next / pinch.scale;
         camera.scale = next;
         camera.x = current.center.x - width / 2 - (pinch.center.x - width / 2 - pinch.x) * ratio;
@@ -561,7 +573,6 @@ export function GraphView({
       if (drag === null || drag.id !== event.pointerId) return;
       if (Math.hypot(point.x - drag.start.x, point.y - drag.start.y) > 5) drag.moved = true;
       if (drag.moved) {
-        dismissInfo();
         const dx = point.x - drag.last.x;
         const dy = point.y - drag.last.y;
         if (drag.pan) { camera.x += dx; camera.y += dy; }
@@ -613,14 +624,11 @@ export function GraphView({
       }
       event.preventDefault();
       event.stopPropagation();
-      dismissInfo();
+      infoFocusRef.current = false;
       requestDraw();
     }
-    function outsidePointerDown(event: globalThis.PointerEvent) {
-      if ((selected >= 0 || infoExitRef.current !== null) && event.target instanceof Node && event.target !== canvas && !infoRef.current?.contains(event.target)) dismissInfo();
-    }
     function escapeInfo(event: globalThis.KeyboardEvent) {
-      if (event.key !== "Escape" || (selected < 0 && infoExitRef.current === null)) return;
+      if (event.key !== "Escape" || (infoIndex < 0 && infoExitRef.current === null)) return;
       event.preventDefault();
       event.stopPropagation();
       dismissInfo(true);
@@ -660,7 +668,6 @@ export function GraphView({
     motionPreference.addEventListener("change", requestDraw);
     window.addEventListener("resize", resize);
     document.addEventListener("visibilitychange", visibilityChanged);
-    document.addEventListener("pointerdown", outsidePointerDown);
     document.addEventListener("keydown", escapeInfo);
     canvas.addEventListener("wheel", wheel, { passive: false });
     canvas.addEventListener("pointerdown", pointerDown);
@@ -681,7 +688,6 @@ export function GraphView({
       motionPreference.removeEventListener("change", requestDraw);
       window.removeEventListener("resize", resize);
       document.removeEventListener("visibilitychange", visibilityChanged);
-      document.removeEventListener("pointerdown", outsidePointerDown);
       document.removeEventListener("keydown", escapeInfo);
       canvas.removeEventListener("wheel", wheel);
       canvas.removeEventListener("pointerdown", pointerDown);

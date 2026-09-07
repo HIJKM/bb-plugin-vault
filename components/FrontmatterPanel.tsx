@@ -186,29 +186,38 @@ export function FrontmatterPanel({
         <Icon name={open ? "ChevronDown" : "ChevronRight"} className="size-3.5" />
         속성
       </Button>
-      {open ? (
-        <div className="mt-1 space-y-2">
-          {fields.map((field) => (
-            <FieldValues
-              key={field.key}
-              field={field}
-              expanded={expanded.has(field.key)}
-              index={index}
-              vaultId={vaultId}
-              rawByHash={rawByHash}
-              onOpen={onOpen}
-              onToggle={() => {
-                setExpanded((current) => {
-                  const next = new Set(current);
-                  if (next.has(field.key)) next.delete(field.key);
-                  else next.add(field.key);
-                  return next;
-                });
-              }}
-            />
-          ))}
+      <div
+        className={cn(
+          "grid transition-[grid-template-rows,opacity] duration-200 ease-out motion-reduce:transition-none",
+          open ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
+        )}
+        aria-hidden={!open}
+        inert={!open}
+      >
+        <div className="min-h-0 overflow-hidden">
+          <div className="space-y-2 pt-1">
+            {fields.map((field) => (
+              <FieldValues
+                key={field.key}
+                field={field}
+                expanded={expanded.has(field.key)}
+                index={index}
+                vaultId={vaultId}
+                rawByHash={rawByHash}
+                onOpen={onOpen}
+                onToggle={() => {
+                  setExpanded((current) => {
+                    const next = new Set(current);
+                    if (next.has(field.key)) next.delete(field.key);
+                    else next.add(field.key);
+                    return next;
+                  });
+                }}
+              />
+            ))}
+          </div>
         </div>
-      ) : null}
+      </div>
     </div>
   );
 }
