@@ -206,6 +206,7 @@ export function GraphView({
   }
 
   function onPointerDown(event: PointerEvent<HTMLCanvasElement>) {
+    event.stopPropagation();
     event.currentTarget.setPointerCapture(event.pointerId);
     pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
     if (pointersRef.current.size === 2) {
@@ -297,6 +298,7 @@ export function GraphView({
       ) : (
         <canvas
           ref={canvasRef}
+          data-allow-pan
           className="block size-full cursor-grab touch-none active:cursor-grabbing"
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}

@@ -25,7 +25,8 @@ export function PathBar({ folder, rootLabel, onNavigate }: PathBarProps) {
     >
       <div
         ref={scrollerRef}
-        className="flex h-8 min-w-0 flex-1 items-center overflow-x-auto overscroll-x-contain [scrollbar-width:thin]"
+        data-allow-pan
+        className="flex h-8 min-w-0 flex-1 items-center overflow-x-auto overscroll-x-contain touch-pan-x [scrollbar-width:thin]"
       >
         <Breadcrumbs folder={folder} rootLabel={rootLabel} onNavigate={onNavigate} />
       </div>

@@ -215,7 +215,7 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
   const resizeDrag = useRef<{ startX: number; startWidth: number; max: number } | null>(null);
   const listScrollerRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
-  useBlockHostSwipe(panelRef, compact);
+  useBlockHostSwipe(panelRef, true);
 
   const applyListWidth = useCallback((width: number, max?: number) => {
     const next = clampListWidth(width, max);
@@ -538,7 +538,10 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
         }
       }}
     >
-      <div className="flex gap-1 overflow-x-auto border-b border-border px-2 py-2">
+      <div
+        data-allow-pan
+        className="flex gap-1 overflow-x-auto border-b border-border px-2 py-2 touch-pan-x"
+      >
         {vaults.map((vault) => {
           const selected = vault.id === vaultId;
           return (
@@ -715,7 +718,10 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
 
   if (graphOpen) {
     return (
-      <div ref={panelRef} className="flex h-full min-h-0 flex-col bg-background text-foreground">
+      <div
+        ref={panelRef}
+        className="flex h-full min-h-0 flex-col overscroll-x-none bg-background touch-pan-y text-foreground"
+      >
         <div className="flex items-center gap-2 border-b border-border px-3 py-2">
           <Button type="button" variant="ghost" size="sm" onClick={() => setGraphOpen(false)}>
             <Icon name="ChevronLeft" className="size-4" />
@@ -744,7 +750,10 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
   return (
     <div
       ref={panelRef}
-      className={cn("flex h-full min-h-0 bg-background text-foreground", resizing ? "select-none" : "")}
+      className={cn(
+        "flex h-full min-h-0 overscroll-x-none bg-background touch-pan-y text-foreground",
+        resizing ? "select-none" : "",
+      )}
     >
       {showList ? (
         compact ? (
