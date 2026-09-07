@@ -724,7 +724,7 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
             <Icon name="ChevronLeft" className="size-4" />
             닫기
           </Button>
-          <h1 className="min-w-0 flex-1 truncate text-sm font-medium">그래프</h1>
+          <h1 className="min-w-0 flex-1 truncate text-sm font-medium">3D 그래프</h1>
         </div>
         {loadingGraph && graph === null ? (
           <p className="p-6 text-sm text-muted-foreground">그래프를 그리는 중…</p>
