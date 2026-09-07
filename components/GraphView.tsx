@@ -11,6 +11,7 @@ import {
   type ProjectedGraphNode,
 } from "@/lib/graph-layout";
 import { countGraphConnections, graphDepthAppearance, GRAPH_DEPTH_APPEARANCES, GRAPH_DEPTH_COLORS } from "@/lib/graph-presentation";
+import { graphCalloutLeader, placeGraphCallout, type CalloutRect } from "@/lib/graph-callouts";
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 type Point = { x: number; y: number };
@@ -36,7 +37,9 @@ export function GraphView({
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const infoRef = useRef<HTMLDivElement>(null);
-  const infoAnchorRef = useRef<Point | null>(null);
+  const infoLeaderRef = useRef<SVGPolylineElement>(null);
+  const infoRectRef = useRef<CalloutRect | null>(null);
+  const infoAnchorRef = useRef<(Point & { radius: number }) | null>(null);
   const controlsRef = useRef<Controls | null>(null);
   const propsRef = useRef({ activePath, onOpen });
   propsRef.current = { activePath, onOpen };
@@ -54,29 +57,34 @@ export function GraphView({
     const margin = 8;
     panel.style.maxHeight = `${Math.max(0, height - margin * 2)}px`;
     const panelWidth = panel.offsetWidth;
-    const panelHeight = panel.offsetHeight;
-    const right = anchor.x + 14;
-    const leftSide = anchor.x - panelWidth - 14;
-    let left = right;
-    let top = anchor.y - panelHeight / 2;
-    if (right + panelWidth > width - margin) {
-      left = leftSide;
-      if (leftSide < margin) {
-        // 좁은 화면에서는 점 위·아래의 여백을 사용해 선택한 점을 가리지 않는다.
-        left = anchor.x - panelWidth / 2;
-        const above = anchor.y - panelHeight - 14;
-        top = above >= margin ? above : anchor.y + 14;
-      }
+    let panelHeight = panel.offsetHeight;
+    let rect = placeGraphCallout(anchor, { width: panelWidth, height: panelHeight }, { width, height }, [], 40);
+    if (rect === null) {
+      // 낮은 화면에서는 정보를 스크롤하게 해 점과 연결선이 가려지지 않게 한다.
+      const availableHeight = Math.max(anchor.y - margin, height - margin - anchor.y) - 20;
+      panel.style.maxHeight = `${Math.max(0, Math.min(height - margin * 2, availableHeight))}px`;
+      panelHeight = panel.offsetHeight;
+      rect = placeGraphCallout(anchor, { width: panelWidth, height: panelHeight }, { width, height }, [], 20);
     }
-    panel.style.left = `${clamp(left, margin, Math.max(margin, width - panelWidth - margin))}px`;
-    panel.style.top = `${clamp(top, margin, Math.max(margin, height - panelHeight - margin))}px`;
+    rect ??= {
+      x: clamp(anchor.x - panelWidth / 2, margin, Math.max(margin, width - panelWidth - margin)),
+      y: clamp(anchor.y + 40, margin, Math.max(margin, height - panelHeight - margin)),
+      width: panelWidth,
+      height: panelHeight,
+    };
+    panel.style.left = `${rect.x}px`;
+    panel.style.top = `${rect.y}px`;
+    infoRectRef.current = rect;
+    const leader = graphCalloutLeader(anchor, rect, anchor.radius);
+    infoLeaderRef.current?.setAttribute("points", leader?.map(({ x, y }) => `${x},${y}`).join(" ") ?? "");
   }
 
   useLayoutEffect(() => {
     if (info === null || infoRef.current === null || wrapRef.current === null) return;
-    positionInfo();
+    const update = () => { positionInfo(); controlsRef.current?.redraw(); };
+    update();
     infoRef.current.focus({ preventScroll: true });
-    const observer = new ResizeObserver(positionInfo);
+    const observer = new ResizeObserver(update);
     observer.observe(infoRef.current);
     observer.observe(wrapRef.current);
     return () => observer.disconnect();
@@ -85,6 +93,7 @@ export function GraphView({
   useEffect(() => {
     setInfo(null);
     infoAnchorRef.current = null;
+    infoRectRef.current = null;
     const wrap = wrapRef.current;
     const canvas = canvasRef.current;
     if (wrap === null || canvas === null || nodes.length === 0) return;
@@ -135,13 +144,14 @@ export function GraphView({
     let hover = -1;
     let selected = -1;
     let projected: ProjectedGraphNode[] = [];
+    const labelText = new Map<number, { title: string; width: number }>();
     const order = nodes.map((_, index) => index);
     let focusKey = "";
     let focusedEdges: typeof layout.edges = [];
     const pointers = new Map<number, Point>();
     let drag: { id: number; start: Point; last: Point; moved: boolean; pan: boolean; hit: number } | null = null;
     let pinch: { distance: number; center: Point; scale: number; x: number; y: number } | null = null;
-    let palette = { edge: "#888", ink: "#111", accent: "#4f46e5" };
+    let palette = { edge: "#888", ink: "#111", accent: "#4f46e5", surface: "#fff" };
 
     function canDraw() {
       return !disposed && !document.hidden && inViewport && width > 0 && height > 0;
@@ -160,12 +170,14 @@ export function GraphView({
         edge: color("--border", "#888"),
         ink: color("--foreground", "#111"),
         accent: color("--primary", "#4f46e5"),
+        surface: color("--popover", color("--background", "#fff")),
       };
       requestDraw();
     }
     function resize() {
       width = wrap!.clientWidth;
       height = wrap!.clientHeight;
+      labelText.clear();
       dpr = Math.min(coarse ? 1.5 : 2, window.devicePixelRatio || 1) * quality;
       canvas!.width = Math.max(1, Math.round(width * dpr));
       canvas!.height = Math.max(1, Math.round(height * dpr));
@@ -178,6 +190,7 @@ export function GraphView({
       if (selected < 0) return;
       selected = -1;
       infoAnchorRef.current = null;
+      infoRectRef.current = null;
       setInfo(null);
       if (restoreFocus) canvas!.focus({ preventScroll: true });
       requestDraw();
@@ -186,7 +199,7 @@ export function GraphView({
       if (index < 0) { dismissInfo(); return; }
       if (index === selected) return;
       selected = index;
-      infoAnchorRef.current = projected[index];
+      infoAnchorRef.current = { ...projected[index], radius: radius(index) };
       setInfo({ ...nodes[index], connections: connections[index] });
       requestDraw();
     }
@@ -208,7 +221,7 @@ export function GraphView({
       const project = createGraphProjection(camera, width, height);
       projected = layout.nodes.map(project);
       if (selected >= 0) {
-        infoAnchorRef.current = projected[selected];
+        infoAnchorRef.current = { ...projected[selected], radius: radius(selected) };
         positionInfo();
       }
       order.sort((a, b) => projected[a].depth - projected[b].depth);
@@ -266,25 +279,51 @@ export function GraphView({
       ctx!.globalAlpha = 1;
       ctx!.font = "12px ui-sans-serif, system-ui, sans-serif";
       ctx!.textBaseline = "middle";
-      ctx!.fillStyle = palette.ink;
-      const occupied = new Set<string>();
+      const occupied: CalloutRect[] = infoRectRef.current ? [infoRectRef.current] : [];
       let labels = 0;
       function label(index: number, priority = false) {
-        if (index < 0 || !projected[index].visible || (!priority && labels >= labelBudget)) return;
+        if (index < 0 || index === selected || !projected[index].visible || (!priority && labels >= labelBudget)) return;
         const point = projected[index];
-        const name = nodes[index].name;
-        const title = name.length > 28 ? `${name.slice(0, 27)}…` : name;
-        const labelWidth = ctx!.measureText(title).width;
-        const x = clamp(point.x + radius(index) + 5, 2, Math.max(2, width - labelWidth - 2));
-        const y = clamp(point.y, 9, height - 9);
-        const cells: string[] = [];
-        for (let col = Math.floor(x / 60); col <= Math.floor((x + labelWidth) / 60); col++) {
-          for (let row = Math.floor((y - 8) / 18); row <= Math.floor((y + 8) / 18); row++) cells.push(`${col}:${row}`);
+        let text = labelText.get(index);
+        if (!text) {
+          const name = nodes[index].name;
+          const maxWidth = Math.min(coarse ? 140 : 180, width - 28);
+          if (maxWidth <= 0) return;
+          let length = Math.min(name.length, 28);
+          let title = name.slice(0, length) + (length < name.length ? "…" : "");
+          let textWidth = ctx!.measureText(title).width;
+          while (textWidth > maxWidth && length > 0) {
+            title = `${name.slice(0, --length)}…`;
+            textWidth = ctx!.measureText(title).width;
+          }
+          if (textWidth > maxWidth) return;
+          text = { title, width: Math.ceil(textWidth) + 12 };
+          labelText.set(index, text);
         }
-        if (!priority && cells.some((cell) => occupied.has(cell))) return;
-        cells.forEach((cell) => occupied.add(cell));
-        ctx!.globalAlpha = priority ? 1 : graphDepthAppearance(point.depth).opacity;
-        ctx!.fillText(title, x, y);
+        const rect = placeGraphCallout(point, { width: text.width, height: 22 }, { width, height }, occupied, coarse ? 22 : 28);
+        if (rect === null) return;
+        const leader = graphCalloutLeader(point, rect, radius(index));
+        if (leader === null) return;
+        occupied.push(rect);
+        const appearance = graphDepthAppearance(point.depth);
+        const opacity = priority ? 1 : appearance.opacity;
+        ctx!.strokeStyle = appearance.color;
+        ctx!.lineWidth = 1;
+        ctx!.globalAlpha = opacity * 0.7;
+        ctx!.beginPath();
+        ctx!.moveTo(leader[0].x, leader[0].y);
+        for (let i = 1; i < leader.length; i++) ctx!.lineTo(leader[i].x, leader[i].y);
+        ctx!.stroke();
+        ctx!.globalAlpha = opacity;
+        ctx!.fillStyle = palette.surface;
+        ctx!.beginPath();
+        ctx!.roundRect(rect.x, rect.y, rect.width, rect.height, 4);
+        ctx!.fill();
+        ctx!.globalAlpha = opacity * 0.45;
+        ctx!.stroke();
+        ctx!.globalAlpha = opacity;
+        ctx!.fillStyle = palette.ink;
+        ctx!.fillText(text.title, rect.x + 6, rect.y + rect.height / 2);
         labels++;
       }
       label(active, true);
@@ -520,6 +559,11 @@ export function GraphView({
             tabIndex={0}
             className="absolute inset-0 block size-full cursor-grab touch-none outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring active:cursor-grabbing"
           />
+        )}
+        {info !== null && (
+          <svg className="pointer-events-none absolute inset-0 z-10 size-full overflow-hidden" aria-hidden="true">
+            <polyline ref={infoLeaderRef} fill="none" stroke={GRAPH_DEPTH_COLORS[8]} strokeWidth={1.25} strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
         )}
         {info !== null && (
           <div
