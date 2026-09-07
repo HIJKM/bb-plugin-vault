@@ -13,7 +13,6 @@ import {
 import { countGraphConnections, graphDepthAppearance, GRAPH_DEPTH_APPEARANCES, GRAPH_DEPTH_COLORS } from "@/lib/graph-presentation";
 import {
   closestGraphCallouts,
-  GRAPH_CALLOUT_LABEL_MS,
   GRAPH_CALLOUT_LINE_MS,
   graphCalloutLeader,
   graphCalloutPrefix,
@@ -24,6 +23,7 @@ import {
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 const SELECTED_NODE_COLOR = "#8b5cf6";
+const INFO_TRANSITION_MS = 180;
 type Point = { x: number; y: number };
 type Controls = {
   redraw: () => void;
@@ -50,6 +50,8 @@ export function GraphView({
   const infoLeaderRef = useRef<SVGPolylineElement>(null);
   const infoRectRef = useRef<CalloutRect | null>(null);
   const infoAnchorRef = useRef<(Point & { radius: number }) | null>(null);
+  const infoExitRef = useRef<((afterClose: () => void) => void) | null>(null);
+  const infoExitingRef = useRef(false);
   const controlsRef = useRef<Controls | null>(null);
   const propsRef = useRef({ activePath, onOpen });
   propsRef.current = { activePath, onOpen };
@@ -58,6 +60,7 @@ export function GraphView({
   const [info, setInfo] = useState<(GraphNode & { connections: number; color: string }) | null>(null);
 
   function positionInfo() {
+    if (infoExitingRef.current) return;
     const panel = infoRef.current;
     const wrap = wrapRef.current;
     const anchor = infoAnchorRef.current;
@@ -96,18 +99,24 @@ export function GraphView({
     const panel = infoRef.current;
     const line = infoLeaderRef.current;
     let disposed = false;
+    let exiting = false;
+    let exited = false;
+    let afterClose: (() => void) | undefined;
     let lineAnimation: Animation | undefined;
     let panelAnimation: Animation | undefined;
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const update = () => { positionInfo(); controlsRef.current?.redraw(); };
+    infoExitingRef.current = false;
     update();
     panel.style.opacity = "0";
+    panel.style.transform = "scale(0.92)";
     panel.style.pointerEvents = "none";
     panel.inert = true;
+    if (line) line.style.opacity = "1";
     function showPanel() {
-      if (disposed) return;
+      if (disposed || exiting) return;
       const finish = () => {
-        if (disposed) return;
+        if (disposed || exiting) return;
         panel.style.opacity = "1";
         panel.style.transform = "none";
         panel.style.pointerEvents = "auto";
@@ -117,9 +126,9 @@ export function GraphView({
       };
       if (reducedMotion) { finish(); return; }
       panelAnimation = panel.animate([
-        { opacity: 0, transform: "scale(0.94)" },
+        { opacity: 0, transform: "scale(0.92)" },
         { opacity: 1, transform: "scale(1)" },
-      ], { duration: GRAPH_CALLOUT_LABEL_MS, easing: "cubic-bezier(0.16, 1, 0.3, 1)", fill: "forwards" });
+      ], { duration: INFO_TRANSITION_MS, easing: "cubic-bezier(0.16, 1, 0.3, 1)", fill: "forwards" });
       panelAnimation.onfinish = finish;
     }
     if (line && line.getAttribute("points") && !reducedMotion) {
@@ -128,7 +137,7 @@ export function GraphView({
         { strokeDashoffset: "1" }, { strokeDashoffset: "0" },
       ], { duration: GRAPH_CALLOUT_LINE_MS, easing: "ease-out", fill: "forwards" });
       lineAnimation.onfinish = () => {
-        if (disposed) return;
+        if (disposed || exiting) return;
         line.style.strokeDashoffset = "0";
         lineAnimation?.cancel();
         showPanel();
@@ -140,11 +149,65 @@ export function GraphView({
     const observer = new ResizeObserver(update);
     observer.observe(panel);
     observer.observe(wrapRef.current);
+    function exit(complete: () => void) {
+      if (disposed) return;
+      if (exited) { complete(); return; }
+      afterClose = complete;
+      if (exiting) return;
+      exiting = true;
+      infoExitingRef.current = true;
+      observer.disconnect();
+      // 진입 도중 닫아도 현재 모습에서 이어져 깜빡이거나 커지지 않게 한다.
+      const current = getComputedStyle(panel);
+      const opacity = current.opacity;
+      const transform = current.transform;
+      const lineStyle = line ? getComputedStyle(line) : null;
+      const lineOpacity = lineStyle?.opacity ?? "0";
+      const dashoffset = lineStyle?.strokeDashoffset ?? "0";
+      lineAnimation?.cancel();
+      panelAnimation?.cancel();
+      panel.style.opacity = opacity;
+      panel.style.transform = transform;
+      panel.style.pointerEvents = "none";
+      if (panel.contains(document.activeElement)) canvasRef.current?.focus({ preventScroll: true });
+      panel.inert = true;
+      if (line) {
+        line.style.opacity = lineOpacity;
+        line.style.strokeDashoffset = dashoffset;
+      }
+      const finish = () => {
+        if (disposed) return;
+        panel.style.opacity = "0";
+        panel.style.transform = "scale(0.92)";
+        if (line) line.style.opacity = "0";
+        lineAnimation?.cancel();
+        panelAnimation?.cancel();
+        exited = true;
+        const complete = afterClose;
+        afterClose = undefined;
+        complete?.();
+      };
+      if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) { finish(); return; }
+      const options: KeyframeAnimationOptions = {
+        duration: INFO_TRANSITION_MS, easing: "cubic-bezier(0.4, 0, 1, 1)", fill: "forwards",
+      };
+      if (line) lineAnimation = line.animate([{ opacity: lineOpacity }, { opacity: 0 }], options);
+      panelAnimation = panel.animate([
+        { opacity, transform }, { opacity: 0, transform: "scale(0.92)" },
+      ], options);
+      panelAnimation.onfinish = finish;
+    }
+    infoExitRef.current = exit;
     return () => {
       disposed = true;
+      afterClose = undefined;
       lineAnimation?.cancel();
       panelAnimation?.cancel();
       observer.disconnect();
+      if (infoExitRef.current === exit) {
+        infoExitRef.current = null;
+        infoExitingRef.current = false;
+      }
     };
   }, [info]);
 
@@ -246,20 +309,32 @@ export function GraphView({
       return clamp(2 * projected[index].perspective * camera.scale ** 0.2, 1, 3.2);
     }
     function dismissInfo(restoreFocus = false) {
-      if (selected < 0) return;
+      if (selected < 0 && infoExitRef.current === null) return;
       selected = -1;
-      infoAnchorRef.current = null;
-      infoRectRef.current = null;
-      setInfo(null);
       if (restoreFocus) canvas!.focus({ preventScroll: true });
+      const close = () => {
+        if (disposed) return;
+        infoAnchorRef.current = null;
+        infoRectRef.current = null;
+        setInfo(null);
+        requestDraw();
+      };
+      if (infoExitRef.current) infoExitRef.current(close);
+      else close();
       requestDraw();
     }
     function selectInfo(index: number) {
       if (index < 0) { dismissInfo(); return; }
       if (index === selected) return;
       selected = index;
-      infoAnchorRef.current = { ...projected[index], radius: radius(index) };
-      setInfo({ ...nodes[index], connections: connections[index], color: SELECTED_NODE_COLOR });
+      const show = () => {
+        if (disposed || selected !== index) return;
+        infoAnchorRef.current = { ...projected[index], radius: radius(index) };
+        setInfo({ ...nodes[index], connections: connections[index], color: SELECTED_NODE_COLOR });
+        requestDraw();
+      };
+      if (infoExitRef.current) infoExitRef.current(show);
+      else show();
       requestDraw();
     }
     function paint(time: number) {
@@ -279,7 +354,7 @@ export function GraphView({
       }
       const project = createGraphProjection(camera, width, height);
       projected = layout.nodes.map(project);
-      if (selected >= 0) {
+      if (selected >= 0 && !infoExitingRef.current) {
         infoAnchorRef.current = { ...projected[selected], radius: radius(selected) };
         positionInfo();
       }
@@ -542,10 +617,10 @@ export function GraphView({
       requestDraw();
     }
     function outsidePointerDown(event: globalThis.PointerEvent) {
-      if (selected >= 0 && event.target instanceof Node && event.target !== canvas && !infoRef.current?.contains(event.target)) dismissInfo();
+      if ((selected >= 0 || infoExitRef.current !== null) && event.target instanceof Node && event.target !== canvas && !infoRef.current?.contains(event.target)) dismissInfo();
     }
     function escapeInfo(event: globalThis.KeyboardEvent) {
-      if (event.key !== "Escape" || selected < 0) return;
+      if (event.key !== "Escape" || (selected < 0 && infoExitRef.current === null)) return;
       event.preventDefault();
       event.stopPropagation();
       dismissInfo(true);
