@@ -374,10 +374,11 @@ export function GraphView({
       ctx!.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx!.clearRect(0, 0, width, height);
       const active = selected >= 0 ? selected : indices.get(propsRef.current.activePath) ?? -1;
-      const nextFocusKey = `${active}:${hover}`;
+      const edgeHover = selected >= 0 ? -1 : hover;
+      const nextFocusKey = `${active}:${edgeHover}`;
       if (nextFocusKey !== focusKey) {
         focusKey = nextFocusKey;
-        focusedEdges = layout.edges.filter(({ from, to }) => from === active || to === active || from === hover || to === hover);
+        focusedEdges = layout.edges.filter(({ from, to }) => from === active || to === active || from === edgeHover || to === edgeHover);
       }
       function line(edge: (typeof layout.edges)[number]) {
         const from = projected[edge.from];
@@ -387,13 +388,13 @@ export function GraphView({
         ctx!.moveTo(from.x, from.y);
         ctx!.lineTo(to.x, to.y);
       }
-      ctx!.globalAlpha = 0.45;
+      ctx!.globalAlpha = selected >= 0 ? 0.12 : 0.45;
       ctx!.strokeStyle = palette.edge;
       ctx!.lineWidth = 1;
       ctx!.beginPath();
       for (let i = 0; i < layout.edges.length; i += edgeStride) line(layout.edges[i]);
       ctx!.stroke();
-      ctx!.globalAlpha = 0.65;
+      ctx!.globalAlpha = selected >= 0 ? 0.5 : 0.65;
       ctx!.strokeStyle = GRAPH_DEPTH_COLORS[8];
       ctx!.beginPath();
       for (const edge of focusedEdges) line(edge);
@@ -405,7 +406,7 @@ export function GraphView({
         const appearance = graphDepthAppearance(point.depth);
         const color = index === selected ? SELECTED_NODE_COLOR : appearance.color;
         const sprite = focused ? undefined : depthSprites.get(appearance.color);
-        ctx!.globalAlpha = focused ? 1 : appearance.opacity;
+        ctx!.globalAlpha = (focused ? 1 : appearance.opacity) * (selected >= 0 && index !== selected ? 0.28 : 1);
         if (sprite) {
           const size = sprite.size * radius(index) / 2;
           ctx!.drawImage(sprite.image, point.x - size / 2, point.y - size / 2, size, size);
