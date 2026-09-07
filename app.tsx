@@ -20,6 +20,7 @@ import { SettingsSection } from "@/components/SettingsSection";
 import { Toolbar } from "@/components/Toolbar";
 import { Button } from "@/components/ui/button";
 import { Icon, preloadExtendedIcons } from "@/components/ui/icon";
+import { useBlockHostSwipe } from "@/components/ui/hooks/use-block-host-swipe";
 import { useIsCompactViewport } from "@/components/ui/hooks/use-compact-viewport";
 import { isImageFileName } from "@/lib/image-file";
 import { cn } from "@/lib/utils";
@@ -213,6 +214,8 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
   const [resizing, setResizing] = useState(false);
   const resizeDrag = useRef<{ startX: number; startWidth: number; max: number } | null>(null);
   const listScrollerRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  useBlockHostSwipe(panelRef, compact);
 
   const applyListWidth = useCallback((width: number, max?: number) => {
     const next = clampListWidth(width, max);
@@ -712,7 +715,7 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
 
   if (graphOpen) {
     return (
-      <div className="flex h-full min-h-0 flex-col bg-background text-foreground">
+      <div ref={panelRef} className="flex h-full min-h-0 flex-col bg-background text-foreground">
         <div className="flex items-center gap-2 border-b border-border px-3 py-2">
           <Button type="button" variant="ghost" size="sm" onClick={() => setGraphOpen(false)}>
             <Icon name="ChevronLeft" className="size-4" />
@@ -739,7 +742,10 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
   }
 
   return (
-    <div className={cn("flex h-full min-h-0 bg-background text-foreground", resizing ? "select-none" : "")}>
+    <div
+      ref={panelRef}
+      className={cn("flex h-full min-h-0 bg-background text-foreground", resizing ? "select-none" : "")}
+    >
       {showList ? (
         compact ? (
           listPane
