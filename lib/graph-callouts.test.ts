@@ -1,6 +1,54 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { graphCalloutLeader, placeGraphCallout } from "./graph-callouts.ts";
+import { closestGraphCallouts, graphCalloutLeader, placeGraphCallout } from "./graph-callouts.ts";
+import { projectGraphNode } from "./graph-layout.ts";
+
+describe("closestGraphCallouts", () => {
+  it("returns only the five closest notes in the supplied depth order", () => {
+    const projected = [10, 50, 20, 40, 0, 30, 60].map((depth) => ({ depth, visible: true }));
+    assert.deepEqual(closestGraphCallouts(projected, [4, 0, 2, 5, 3, 1, 6]), [6, 1, 3, 5, 2]);
+  });
+
+  it("skips hidden notes before counting the five closest visible notes", () => {
+    const projected = Array.from({ length: 8 }, (_, depth) => ({ depth, visible: depth < 6 }));
+    assert.deepEqual(closestGraphCallouts(projected, [0, 1, 2, 3, 4, 5, 6, 7]), [5, 4, 3, 2, 1]);
+  });
+
+  it("returns fewer labels when fewer than five notes are visible", () => {
+    assert.deepEqual(closestGraphCallouts([], []), []);
+    assert.deepEqual(closestGraphCallouts([
+      { depth: -10, visible: true },
+      { depth: 0, visible: false },
+      { depth: 10, visible: true },
+    ], [0, 1, 2]), [2, 0]);
+    assert.deepEqual(closestGraphCallouts([{ depth: 10, visible: false }], [0]), []);
+  });
+
+  it("changes the five closest notes when camera rotation reverses their depths", () => {
+    const nodes = [-180, -120, -60, 0, 60, 120, 180].map((z) => ({ x: 20, y: 20, z }));
+    const camera = { orientation: { x: 0, y: 0, z: 0, w: 1 }, scale: 1, x: 0, y: 0 };
+    const front = nodes.map((node) => projectGraphNode(node, camera, 800, 600));
+    const back = nodes.map((node) => projectGraphNode(node, {
+      ...camera, orientation: { x: 0, y: 1, z: 0, w: 0 },
+    }, 800, 600));
+    const frontOrder = nodes.map((_, index) => index).sort((a, b) => front[a].depth - front[b].depth);
+    const backOrder = nodes.map((_, index) => index).sort((a, b) => back[a].depth - back[b].depth);
+    assert.deepEqual(closestGraphCallouts(front, frontOrder), [6, 5, 4, 3, 2]);
+    assert.deepEqual(closestGraphCallouts(back, backOrder), [0, 1, 2, 3, 4]);
+  });
+
+  it("does not mutate the projected notes or their existing depth order", () => {
+    const projected = Object.freeze([
+      Object.freeze({ depth: 20, visible: true }),
+      Object.freeze({ depth: -10, visible: true }),
+      Object.freeze({ depth: 10, visible: false }),
+    ]);
+    const order = Object.freeze([1, 2, 0]);
+    const before = structuredClone({ projected, order });
+    assert.deepEqual(closestGraphCallouts(projected, order), [0, 1]);
+    assert.deepEqual({ projected, order }, before);
+  });
+});
 
 describe("placeGraphCallout", () => {
   it("places a label above and to the right of its note when there is room", () => {

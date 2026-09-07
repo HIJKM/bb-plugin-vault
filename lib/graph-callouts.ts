@@ -1,6 +1,18 @@
 export type CalloutPoint = { x: number; y: number };
 export type CalloutRect = CalloutPoint & { width: number; height: number };
 
+export function closestGraphCallouts(
+  projected: readonly { depth: number; visible: boolean }[],
+  order: readonly number[],
+): number[] {
+  const closest: number[] = [];
+  for (let index = order.length - 1; index >= 0 && closest.length < 5; index--) {
+    const nodeIndex = order[index];
+    if (projected[nodeIndex].visible) closest.push(nodeIndex);
+  }
+  return closest;
+}
+
 export function placeGraphCallout(
   anchor: CalloutPoint,
   size: { width: number; height: number },

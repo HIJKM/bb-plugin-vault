@@ -11,7 +11,7 @@ import {
   type ProjectedGraphNode,
 } from "@/lib/graph-layout";
 import { countGraphConnections, graphDepthAppearance, GRAPH_DEPTH_APPEARANCES, GRAPH_DEPTH_COLORS } from "@/lib/graph-presentation";
-import { graphCalloutLeader, placeGraphCallout, type CalloutRect } from "@/lib/graph-callouts";
+import { closestGraphCallouts, graphCalloutLeader, placeGraphCallout, type CalloutRect } from "@/lib/graph-callouts";
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 type Point = { x: number; y: number };
@@ -45,7 +45,7 @@ export function GraphView({
   propsRef.current = { activePath, onOpen };
   const helpId = useId();
   const [simplified, setSimplified] = useState(false);
-  const [info, setInfo] = useState<(GraphNode & { connections: number }) | null>(null);
+  const [info, setInfo] = useState<(GraphNode & { connections: number; color: string }) | null>(null);
 
   function positionInfo() {
     const panel = infoRef.current;
@@ -77,17 +77,65 @@ export function GraphView({
     infoRectRef.current = rect;
     const leader = graphCalloutLeader(anchor, rect, anchor.radius);
     infoLeaderRef.current?.setAttribute("points", leader?.map(({ x, y }) => `${x},${y}`).join(" ") ?? "");
+    const end = leader?.[leader.length - 1];
+    panel.style.transformOrigin = end ? `${end.x - rect.x}px ${end.y - rect.y}px` : "center";
   }
 
   useLayoutEffect(() => {
     if (info === null || infoRef.current === null || wrapRef.current === null) return;
+    const panel = infoRef.current;
+    const line = infoLeaderRef.current;
+    let disposed = false;
+    let lineAnimation: Animation | undefined;
+    let panelAnimation: Animation | undefined;
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const update = () => { positionInfo(); controlsRef.current?.redraw(); };
     update();
-    infoRef.current.focus({ preventScroll: true });
+    panel.style.opacity = "0";
+    panel.style.pointerEvents = "none";
+    panel.inert = true;
+    function showPanel() {
+      if (disposed) return;
+      const finish = () => {
+        if (disposed) return;
+        panel.style.opacity = "1";
+        panel.style.transform = "none";
+        panel.style.pointerEvents = "auto";
+        panel.inert = false;
+        panel.focus({ preventScroll: true });
+        panelAnimation?.cancel();
+      };
+      if (reducedMotion) { finish(); return; }
+      panelAnimation = panel.animate([
+        { opacity: 0, transform: "scale(0.94)" },
+        { opacity: 1, transform: "scale(1)" },
+      ], { duration: 160, easing: "cubic-bezier(0.16, 1, 0.3, 1)", fill: "forwards" });
+      panelAnimation.onfinish = finish;
+    }
+    if (line && line.getAttribute("points") && !reducedMotion) {
+      line.style.strokeDashoffset = "1";
+      lineAnimation = line.animate([
+        { strokeDashoffset: "1" }, { strokeDashoffset: "0" },
+      ], { duration: 200, easing: "ease-out", fill: "forwards" });
+      lineAnimation.onfinish = () => {
+        if (disposed) return;
+        line.style.strokeDashoffset = "0";
+        lineAnimation?.cancel();
+        showPanel();
+      };
+    } else {
+      if (line) line.style.strokeDashoffset = "0";
+      showPanel();
+    }
     const observer = new ResizeObserver(update);
-    observer.observe(infoRef.current);
+    observer.observe(panel);
     observer.observe(wrapRef.current);
-    return () => observer.disconnect();
+    return () => {
+      disposed = true;
+      lineAnimation?.cancel();
+      panelAnimation?.cancel();
+      observer.disconnect();
+    };
   }, [info]);
 
   useEffect(() => {
@@ -124,7 +172,6 @@ export function GraphView({
     }
     const coarse = window.matchMedia("(pointer: coarse)").matches;
     const edgeBudget = coarse ? 1800 : 4000;
-    const labelBudget = coarse ? 24 : 48;
     const maxSteps = Math.min(GRAPH_MAX_STEPS, coarse ? 80 : 120);
     const frameInterval = coarse ? 1000 / 30 : 1000 / 60;
     const edgeStride = Math.max(1, Math.ceil(layout.edges.length / edgeBudget));
@@ -200,7 +247,7 @@ export function GraphView({
       if (index === selected) return;
       selected = index;
       infoAnchorRef.current = { ...projected[index], radius: radius(index) };
-      setInfo({ ...nodes[index], connections: connections[index] });
+      setInfo({ ...nodes[index], connections: connections[index], color: graphDepthAppearance(projected[index].depth).color });
       requestDraw();
     }
     function paint(time: number) {
@@ -280,9 +327,8 @@ export function GraphView({
       ctx!.font = "12px ui-sans-serif, system-ui, sans-serif";
       ctx!.textBaseline = "middle";
       const occupied: CalloutRect[] = infoRectRef.current ? [infoRectRef.current] : [];
-      let labels = 0;
-      function label(index: number, priority = false) {
-        if (index < 0 || index === selected || !projected[index].visible || (!priority && labels >= labelBudget)) return;
+      function label(index: number) {
+        if (index === selected) return;
         const point = projected[index];
         let text = labelText.get(index);
         if (!text) {
@@ -306,7 +352,7 @@ export function GraphView({
         if (leader === null) return;
         occupied.push(rect);
         const appearance = graphDepthAppearance(point.depth);
-        const opacity = priority ? 1 : appearance.opacity;
+        const opacity = index === active || index === hover ? 1 : appearance.opacity;
         ctx!.strokeStyle = appearance.color;
         ctx!.lineWidth = 1;
         ctx!.globalAlpha = opacity * 0.7;
@@ -324,15 +370,9 @@ export function GraphView({
         ctx!.globalAlpha = opacity;
         ctx!.fillStyle = palette.ink;
         ctx!.fillText(text.title, rect.x + 6, rect.y + rect.height / 2);
-        labels++;
       }
-      label(active, true);
-      if (hover !== active) label(hover, true);
-      // 가까운 노트부터 제한된 수의 이름만 그린다.
-      for (let i = order.length - 1; i >= 0 && labels < labelBudget; i--) {
-        const index = order[i];
-        if (index !== active && index !== hover) label(index);
-      }
+      // 현재 시점에서 가장 가까운 다섯 노트만 이름을 표시한다.
+      for (const index of closestGraphCallouts(projected, order)) label(index);
       if (performance.now() - started > 20) slowFrames++;
       else slowFrames = Math.max(0, slowFrames - 1);
       if (slowFrames >= 4 && quality > 0.65) {
@@ -562,7 +602,7 @@ export function GraphView({
         )}
         {info !== null && (
           <svg className="pointer-events-none absolute inset-0 z-10 size-full overflow-hidden" aria-hidden="true">
-            <polyline ref={infoLeaderRef} fill="none" stroke={GRAPH_DEPTH_COLORS[8]} strokeWidth={1.25} strokeLinecap="round" strokeLinejoin="round" />
+            <polyline ref={infoLeaderRef} pathLength={1} strokeDasharray={1} strokeDashoffset={1} fill="none" stroke={info.color} strokeOpacity={0.7} strokeWidth={1} strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         )}
         {info !== null && (
@@ -571,8 +611,8 @@ export function GraphView({
             role="dialog"
             aria-label="노트 정보"
             tabIndex={-1}
-            style={{ width: "min(18rem, calc(100% - 16px))" }}
-            className="absolute z-10 overflow-auto rounded-lg border border-border bg-popover p-3 text-popover-foreground shadow-md outline-none"
+            style={{ width: "min(15rem, calc(100% - 16px))", borderColor: `${info.color}73`, opacity: 0, pointerEvents: "none" }}
+            className="absolute z-10 overflow-auto rounded border bg-popover p-2 text-popover-foreground shadow-sm outline-none"
             onPointerDown={(event) => event.stopPropagation()}
             onKeyDown={(event) => {
               if (event.key !== "Escape") return;
@@ -582,12 +622,14 @@ export function GraphView({
             }}
           >
             <div className="flex items-start gap-2">
-              <p className="min-w-0 flex-1 break-words text-sm font-medium">{info.name}</p>
-              <Button type="button" variant="ghost" size="icon" className="shrink-0" aria-label="노트 정보 닫기" onClick={() => controlsRef.current?.dismissInfo()}>×</Button>
+              <p className="min-w-0 flex-1 break-words text-xs font-medium">{info.name}</p>
+              <Button type="button" variant="ghost" size="icon" className="size-6 shrink-0" aria-label="노트 정보 닫기" onClick={() => controlsRef.current?.dismissInfo()}>×</Button>
             </div>
-            <p className="mt-1 break-all text-xs text-muted-foreground">{info.path}</p>
-            <p className="mt-2 text-xs text-muted-foreground">연결된 노트 {info.connections}개</p>
-            <Button type="button" size="sm" className="mt-3 w-full" onClick={() => controlsRef.current?.openFile()}>파일 열기</Button>
+            <p className="mt-1 break-all text-[11px] text-muted-foreground">{info.path}</p>
+            <div className="mt-2 flex items-center justify-between gap-2">
+              <p className="text-[11px] text-muted-foreground">연결된 노트 {info.connections}개</p>
+              <Button type="button" variant="ghost" size="sm" className="h-7 shrink-0 px-2 text-xs" style={{ color: info.color }} onClick={() => controlsRef.current?.openFile()}>파일 열기</Button>
+            </div>
           </div>
         )}
       </div>
