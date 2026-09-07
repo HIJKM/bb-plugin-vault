@@ -11,9 +11,9 @@ import {
 
 describe("graphDepthAppearance", () => {
   it("makes far notes faint and soft while keeping near notes opaque and crisp", () => {
-    assert.deepEqual(graphDepthAppearance(-220), { color: "#477fe0", opacity: 0.18, blur: 1.2 });
-    assert.deepEqual(graphDepthAppearance(0), { color: "#9870c4", opacity: 0.55, blur: 0.5 });
-    assert.deepEqual(graphDepthAppearance(220), { color: "#d67945", opacity: 1, blur: 0 });
+    assert.deepEqual(graphDepthAppearance(-220), { color: "#739ce8", opacity: 0.18, blur: 1.2 });
+    assert.deepEqual(graphDepthAppearance(0), { color: "#3e77e0", opacity: 0.55, blur: 0.5 });
+    assert.deepEqual(graphDepthAppearance(220), { color: "#1f58c1", opacity: 1, blur: 0 });
   });
 
   it("steadily increases opacity and reduces blur across every depth bucket", () => {
@@ -57,10 +57,10 @@ describe("graphDepthAppearance", () => {
 });
 
 describe("graphDepthColor", () => {
-  it("maps far, center, and near depths to distinct stable colors", () => {
-    assert.equal(graphDepthColor(-220), "#477fe0");
-    assert.equal(graphDepthColor(0), "#9870c4");
-    assert.equal(graphDepthColor(220), "#d67945");
+  it("maps far, center, and near depths to light through deep blue shades", () => {
+    assert.equal(graphDepthColor(-220), "#739ce8");
+    assert.equal(graphDepthColor(0), "#3e77e0");
+    assert.equal(graphDepthColor(220), "#1f58c1");
     assert.equal(graphDepthColor(-1), graphDepthColor(1));
     assert.ok(GRAPH_DEPTH_COLORS.includes(graphDepthColor(125)));
   });
@@ -72,17 +72,17 @@ describe("graphDepthColor", () => {
     const back = projectGraphNode(note, {
       ...camera, orientation: { x: 0, y: 1, z: 0, w: 0 },
     }, 800, 600);
-    assert.equal(graphDepthColor(front.depth), "#d67945");
-    assert.equal(graphDepthColor(back.depth), "#477fe0");
+    assert.equal(graphDepthColor(front.depth), "#1f58c1");
+    assert.equal(graphDepthColor(back.depth), "#739ce8");
     assert.deepEqual(note, { x: 0, y: 0, z: 220 });
   });
 
   it("clamps depths outside the graph to the near and far endpoint colors", () => {
     for (const depth of [-221, -10000, -Infinity]) {
-      assert.equal(graphDepthColor(depth), "#477fe0");
+      assert.equal(graphDepthColor(depth), "#739ce8");
     }
     for (const depth of [221, 10000, Infinity]) {
-      assert.equal(graphDepthColor(depth), "#d67945");
+      assert.equal(graphDepthColor(depth), "#1f58c1");
     }
     assert.equal(graphDepthColor(-0), graphDepthColor(0));
   });

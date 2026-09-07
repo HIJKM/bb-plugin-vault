@@ -1,10 +1,10 @@
 import { GRAPH_WORLD_RADIUS, type LayoutEdge } from "./graph-layout.ts";
 
-// 먼 쪽의 청색부터 가까운 쪽의 주황색까지 같은 문자열을 재사용한다.
+// 청색 계열에서 먼 쪽은 밝게, 가까운 쪽은 진하게 표시하며 같은 문자열을 재사용한다.
 export const GRAPH_DEPTH_COLORS: readonly string[] = [
-  "#477fe0", "#517ddd", "#5b7bd9", "#6579d6", "#7078d2", "#7a76cf",
-  "#8474cb", "#8e72c8", "#9870c4", "#a071b4", "#a872a4", "#af7394",
-  "#b77585", "#bf7675", "#c77765", "#ce7855", "#d67945",
+  "#739ce8", "#6c97e7", "#6592e6", "#5f8ee5", "#5889e4", "#5285e3",
+  "#4b80e2", "#457be1", "#3e77e0", "#3772df", "#316ddd", "#2a69dc",
+  "#2464db", "#2361d5", "#225ece", "#205bc8", "#1f58c1",
 ];
 
 export type GraphDepthAppearance = Readonly<{ color: string; opacity: number; blur: number }>;

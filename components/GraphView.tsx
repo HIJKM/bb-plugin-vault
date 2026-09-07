@@ -552,7 +552,7 @@ export function GraphView({
           <div className="min-w-0 flex-1 text-xs text-muted-foreground">
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
               <p>3D · {nodes.length}개 노트{simplified ? " · 일부 연결선 표시" : ""}</p>
-              <span className="inline-flex items-center gap-1" aria-label="거리 색상: 청색은 멀리, 주황색은 가까이">
+              <span className="inline-flex items-center gap-1" aria-label="거리 표시: 옅은 청색은 멀리, 진한 청색은 가까이">
                 멀리
                 <span className="inline-block h-1.5 w-12 rounded-full" style={{ background: `linear-gradient(to right, ${GRAPH_DEPTH_COLORS.join(", ")})` }} />
                 가까이
