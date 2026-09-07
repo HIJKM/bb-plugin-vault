@@ -1,12 +1,54 @@
 export type CalloutPoint = { x: number; y: number };
 export type CalloutRect = CalloutPoint & { width: number; height: number };
 
+export const GRAPH_CALLOUT_LINE_MS = 200;
+export const GRAPH_CALLOUT_LABEL_MS = 160;
+
+export function graphCalloutReveal(elapsed: number, reducedMotion = false) {
+  if (reducedMotion) return { lineProgress: 1, labelProgress: 1, done: true };
+  const line = Math.max(0, Math.min(1, elapsed / GRAPH_CALLOUT_LINE_MS));
+  const label = Math.max(0, Math.min(1, (elapsed - GRAPH_CALLOUT_LINE_MS) / GRAPH_CALLOUT_LABEL_MS));
+  return {
+    lineProgress: 1 - (1 - line) ** 3,
+    labelProgress: 1 - (1 - label) ** 3,
+    done: elapsed >= GRAPH_CALLOUT_LINE_MS + GRAPH_CALLOUT_LABEL_MS,
+  };
+}
+
+export function graphCalloutPrefix(points: readonly CalloutPoint[], progress: number): readonly CalloutPoint[] {
+  if (progress <= 0) return [];
+  if (progress >= 1 || points.length < 2) return points;
+  let total = 0;
+  for (let index = 1; index < points.length; index++) {
+    total += Math.hypot(points[index].x - points[index - 1].x, points[index].y - points[index - 1].y);
+  }
+  if (total === 0) return points;
+  let remaining = total * progress;
+  const prefix = [points[0]];
+  for (let index = 1; index < points.length; index++) {
+    const from = points[index - 1];
+    const to = points[index];
+    const length = Math.hypot(to.x - from.x, to.y - from.y);
+    if (length <= remaining) {
+      prefix.push(to);
+      remaining -= length;
+    } else {
+      if (remaining > 0) prefix.push({
+        x: from.x + (to.x - from.x) * remaining / length,
+        y: from.y + (to.y - from.y) * remaining / length,
+      });
+      break;
+    }
+  }
+  return prefix;
+}
+
 export function closestGraphCallouts(
   projected: readonly { depth: number; visible: boolean }[],
   order: readonly number[],
 ): number[] {
   const closest: number[] = [];
-  for (let index = order.length - 1; index >= 0 && closest.length < 5; index--) {
+  for (let index = order.length - 1; index >= 0 && closest.length < 3; index--) {
     const nodeIndex = order[index];
     if (projected[nodeIndex].visible) closest.push(nodeIndex);
   }

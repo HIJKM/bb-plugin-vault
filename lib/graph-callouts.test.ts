@@ -1,20 +1,90 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { closestGraphCallouts, graphCalloutLeader, placeGraphCallout } from "./graph-callouts.ts";
+import {
+  closestGraphCallouts,
+  graphCalloutLeader,
+  graphCalloutPrefix,
+  graphCalloutReveal,
+  placeGraphCallout,
+  GRAPH_CALLOUT_LINE_MS,
+  GRAPH_CALLOUT_LABEL_MS,
+} from "./graph-callouts.ts";
 import { projectGraphNode } from "./graph-layout.ts";
 
+describe("graphCalloutReveal", () => {
+  it("draws the line for 200ms before revealing the label for 160ms", () => {
+    assert.equal(GRAPH_CALLOUT_LINE_MS, 200);
+    assert.equal(GRAPH_CALLOUT_LABEL_MS, 160);
+    assert.deepEqual(graphCalloutReveal(0), { lineProgress: 0, labelProgress: 0, done: false });
+    assert.deepEqual(graphCalloutReveal(100), { lineProgress: 0.875, labelProgress: 0, done: false });
+    assert.deepEqual(graphCalloutReveal(200), { lineProgress: 1, labelProgress: 0, done: false });
+    assert.deepEqual(graphCalloutReveal(280), { lineProgress: 1, labelProgress: 0.875, done: false });
+    assert.deepEqual(graphCalloutReveal(360), { lineProgress: 1, labelProgress: 1, done: true });
+  });
+
+  it("clamps elapsed time while keeping the label hidden until the line finishes", () => {
+    assert.deepEqual(graphCalloutReveal(-100), { lineProgress: 0, labelProgress: 0, done: false });
+    assert.equal(graphCalloutReveal(199).labelProgress, 0);
+    assert.ok(graphCalloutReveal(199).lineProgress < 1);
+    assert.ok(graphCalloutReveal(359).labelProgress < 1);
+    assert.equal(graphCalloutReveal(359).done, false);
+    assert.deepEqual(graphCalloutReveal(10000), { lineProgress: 1, labelProgress: 1, done: true });
+  });
+
+  it("immediately reveals both the line and label for reduced motion", () => {
+    for (const elapsed of [-100, 0, 100, 280]) {
+      assert.deepEqual(graphCalloutReveal(elapsed, true), { lineProgress: 1, labelProgress: 1, done: true });
+    }
+  });
+});
+
+describe("graphCalloutPrefix", () => {
+  it("reveals the polyline by distance and keeps the elbow before the partial endpoint", () => {
+    const points = [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 30 }];
+    assert.deepEqual(graphCalloutPrefix(points, 0.125), [{ x: 0, y: 0 }, { x: 5, y: 0 }]);
+    assert.deepEqual(graphCalloutPrefix(points, 0.5), [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }]);
+    assert.deepEqual(graphCalloutPrefix(points, 0.25), [{ x: 0, y: 0 }, { x: 10, y: 0 }]);
+    assert.deepEqual(graphCalloutPrefix([{ x: 0, y: 0 }, { x: 3, y: 4 }, { x: 3, y: 9 }], 0.25),
+      [{ x: 0, y: 0 }, { x: 1.5, y: 2 }]);
+  });
+
+  it("starts empty and reuses the complete polyline without mutating its points", () => {
+    const points = Object.freeze([
+      Object.freeze({ x: 0, y: 0 }), Object.freeze({ x: 10, y: 0 }), Object.freeze({ x: 10, y: 30 }),
+    ]);
+    const before = structuredClone(points);
+    assert.deepEqual(graphCalloutPrefix(points, -1), []);
+    assert.deepEqual(graphCalloutPrefix(points, 0), []);
+    assert.deepEqual(graphCalloutPrefix(points, 0.5), [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }]);
+    assert.strictEqual(graphCalloutPrefix(points, 1), points);
+    assert.strictEqual(graphCalloutPrefix(points, 2), points);
+    assert.deepEqual(points, before);
+    const empty: { x: number; y: number }[] = [];
+    assert.strictEqual(graphCalloutPrefix(empty, 1), empty);
+  });
+
+  it("handles empty polylines and zero-length segments without invalid coordinates", () => {
+    assert.deepEqual(graphCalloutPrefix([], 0.5), []);
+    assert.deepEqual(graphCalloutPrefix([{ x: 5, y: 7 }], 0.5), [{ x: 5, y: 7 }]);
+    assert.deepEqual(graphCalloutPrefix([{ x: 5, y: 7 }, { x: 5, y: 7 }], 0.5), [{ x: 5, y: 7 }, { x: 5, y: 7 }]);
+    const prefix = graphCalloutPrefix([{ x: 0, y: 0 }, { x: 0, y: 0 }, { x: 10, y: 0 }], 0.5);
+    assert.deepEqual(prefix.at(-1), { x: 5, y: 0 });
+    assert.ok(prefix.every((point) => Number.isFinite(point.x) && Number.isFinite(point.y)));
+  });
+});
+
 describe("closestGraphCallouts", () => {
-  it("returns only the five closest notes in the supplied depth order", () => {
+  it("returns only the three closest notes in the supplied depth order", () => {
     const projected = [10, 50, 20, 40, 0, 30, 60].map((depth) => ({ depth, visible: true }));
-    assert.deepEqual(closestGraphCallouts(projected, [4, 0, 2, 5, 3, 1, 6]), [6, 1, 3, 5, 2]);
+    assert.deepEqual(closestGraphCallouts(projected, [4, 0, 2, 5, 3, 1, 6]), [6, 1, 3]);
   });
 
-  it("skips hidden notes before counting the five closest visible notes", () => {
+  it("skips hidden notes before counting the three closest visible notes", () => {
     const projected = Array.from({ length: 8 }, (_, depth) => ({ depth, visible: depth < 6 }));
-    assert.deepEqual(closestGraphCallouts(projected, [0, 1, 2, 3, 4, 5, 6, 7]), [5, 4, 3, 2, 1]);
+    assert.deepEqual(closestGraphCallouts(projected, [0, 1, 2, 3, 4, 5, 6, 7]), [5, 4, 3]);
   });
 
-  it("returns fewer labels when fewer than five notes are visible", () => {
+  it("returns fewer labels when fewer than three notes are visible", () => {
     assert.deepEqual(closestGraphCallouts([], []), []);
     assert.deepEqual(closestGraphCallouts([
       { depth: -10, visible: true },
@@ -24,7 +94,7 @@ describe("closestGraphCallouts", () => {
     assert.deepEqual(closestGraphCallouts([{ depth: 10, visible: false }], [0]), []);
   });
 
-  it("changes the five closest notes when camera rotation reverses their depths", () => {
+  it("changes the three closest notes when camera rotation reverses their depths", () => {
     const nodes = [-180, -120, -60, 0, 60, 120, 180].map((z) => ({ x: 20, y: 20, z }));
     const camera = { orientation: { x: 0, y: 0, z: 0, w: 1 }, scale: 1, x: 0, y: 0 };
     const front = nodes.map((node) => projectGraphNode(node, camera, 800, 600));
@@ -33,8 +103,8 @@ describe("closestGraphCallouts", () => {
     }, 800, 600));
     const frontOrder = nodes.map((_, index) => index).sort((a, b) => front[a].depth - front[b].depth);
     const backOrder = nodes.map((_, index) => index).sort((a, b) => back[a].depth - back[b].depth);
-    assert.deepEqual(closestGraphCallouts(front, frontOrder), [6, 5, 4, 3, 2]);
-    assert.deepEqual(closestGraphCallouts(back, backOrder), [0, 1, 2, 3, 4]);
+    assert.deepEqual(closestGraphCallouts(front, frontOrder), [6, 5, 4]);
+    assert.deepEqual(closestGraphCallouts(back, backOrder), [0, 1, 2]);
   });
 
   it("does not mutate the projected notes or their existing depth order", () => {

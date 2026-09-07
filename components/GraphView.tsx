@@ -11,9 +11,19 @@ import {
   type ProjectedGraphNode,
 } from "@/lib/graph-layout";
 import { countGraphConnections, graphDepthAppearance, GRAPH_DEPTH_APPEARANCES, GRAPH_DEPTH_COLORS } from "@/lib/graph-presentation";
-import { closestGraphCallouts, graphCalloutLeader, placeGraphCallout, type CalloutRect } from "@/lib/graph-callouts";
+import {
+  closestGraphCallouts,
+  GRAPH_CALLOUT_LABEL_MS,
+  GRAPH_CALLOUT_LINE_MS,
+  graphCalloutLeader,
+  graphCalloutPrefix,
+  graphCalloutReveal,
+  placeGraphCallout,
+  type CalloutRect,
+} from "@/lib/graph-callouts";
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+const SELECTED_NODE_COLOR = "#8b5cf6";
 type Point = { x: number; y: number };
 type Controls = {
   redraw: () => void;
@@ -109,14 +119,14 @@ export function GraphView({
       panelAnimation = panel.animate([
         { opacity: 0, transform: "scale(0.94)" },
         { opacity: 1, transform: "scale(1)" },
-      ], { duration: 160, easing: "cubic-bezier(0.16, 1, 0.3, 1)", fill: "forwards" });
+      ], { duration: GRAPH_CALLOUT_LABEL_MS, easing: "cubic-bezier(0.16, 1, 0.3, 1)", fill: "forwards" });
       panelAnimation.onfinish = finish;
     }
     if (line && line.getAttribute("points") && !reducedMotion) {
       line.style.strokeDashoffset = "1";
       lineAnimation = line.animate([
         { strokeDashoffset: "1" }, { strokeDashoffset: "0" },
-      ], { duration: 200, easing: "ease-out", fill: "forwards" });
+      ], { duration: GRAPH_CALLOUT_LINE_MS, easing: "ease-out", fill: "forwards" });
       lineAnimation.onfinish = () => {
         if (disposed) return;
         line.style.strokeDashoffset = "0";
@@ -171,6 +181,7 @@ export function GraphView({
       depthSprites.set(color, { image, size });
     }
     const coarse = window.matchMedia("(pointer: coarse)").matches;
+    const motionPreference = window.matchMedia("(prefers-reduced-motion: reduce)");
     const edgeBudget = coarse ? 1800 : 4000;
     const maxSteps = Math.min(GRAPH_MAX_STEPS, coarse ? 80 : 120);
     const frameInterval = coarse ? 1000 / 30 : 1000 / 60;
@@ -192,13 +203,14 @@ export function GraphView({
     let selected = -1;
     let projected: ProjectedGraphNode[] = [];
     const labelText = new Map<number, { title: string; width: number }>();
+    const labelStarts = new Map<number, number>();
     const order = nodes.map((_, index) => index);
     let focusKey = "";
     let focusedEdges: typeof layout.edges = [];
     const pointers = new Map<number, Point>();
     let drag: { id: number; start: Point; last: Point; moved: boolean; pan: boolean; hit: number } | null = null;
     let pinch: { distance: number; center: Point; scale: number; x: number; y: number } | null = null;
-    let palette = { edge: "#888", ink: "#111", accent: "#4f46e5", surface: "#fff" };
+    let palette = { edge: "#888", ink: "#111", surface: "#fff" };
 
     function canDraw() {
       return !disposed && !document.hidden && inViewport && width > 0 && height > 0;
@@ -209,6 +221,7 @@ export function GraphView({
     function pause() {
       if (raf !== null) window.cancelAnimationFrame(raf);
       raf = null;
+      labelStarts.clear();
     }
     function readPalette() {
       const style = getComputedStyle(canvas!);
@@ -216,7 +229,6 @@ export function GraphView({
       palette = {
         edge: color("--border", "#888"),
         ink: color("--foreground", "#111"),
-        accent: color("--primary", "#4f46e5"),
         surface: color("--popover", color("--background", "#fff")),
       };
       requestDraw();
@@ -247,7 +259,7 @@ export function GraphView({
       if (index === selected) return;
       selected = index;
       infoAnchorRef.current = { ...projected[index], radius: radius(index) };
-      setInfo({ ...nodes[index], connections: connections[index], color: graphDepthAppearance(projected[index].depth).color });
+      setInfo({ ...nodes[index], connections: connections[index], color: SELECTED_NODE_COLOR });
       requestDraw();
     }
     function paint(time: number) {
@@ -272,6 +284,7 @@ export function GraphView({
         positionInfo();
       }
       order.sort((a, b) => projected[a].depth - projected[b].depth);
+      const closest = closestGraphCallouts(projected, order);
       ctx!.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx!.clearRect(0, 0, width, height);
       const active = selected >= 0 ? selected : indices.get(propsRef.current.activePath) ?? -1;
@@ -295,28 +308,29 @@ export function GraphView({
       for (let i = 0; i < layout.edges.length; i += edgeStride) line(layout.edges[i]);
       ctx!.stroke();
       ctx!.globalAlpha = 0.65;
-      ctx!.strokeStyle = palette.accent;
+      ctx!.strokeStyle = GRAPH_DEPTH_COLORS[8];
       ctx!.beginPath();
       for (const edge of focusedEdges) line(edge);
       ctx!.stroke();
       for (const index of order) {
         const point = projected[index];
         if (!point.visible) continue;
-        const focused = index === active || index === hover;
+        const focused = index === active || index === hover || closest.includes(index);
         const appearance = graphDepthAppearance(point.depth);
+        const color = index === selected ? SELECTED_NODE_COLOR : appearance.color;
         const sprite = focused ? undefined : depthSprites.get(appearance.color);
         ctx!.globalAlpha = focused ? 1 : appearance.opacity;
         if (sprite) {
           const size = sprite.size * radius(index) / 2;
           ctx!.drawImage(sprite.image, point.x - size / 2, point.y - size / 2, size, size);
         } else {
-          ctx!.fillStyle = appearance.color;
+          ctx!.fillStyle = color;
           ctx!.beginPath();
           ctx!.arc(point.x, point.y, radius(index), 0, Math.PI * 2);
           ctx!.fill();
         }
         if (focused) {
-          ctx!.strokeStyle = palette.accent;
+          ctx!.strokeStyle = color;
           ctx!.lineWidth = 1;
           ctx!.beginPath();
           ctx!.arc(point.x, point.y, radius(index) + 1.5, 0, Math.PI * 2);
@@ -327,6 +341,8 @@ export function GraphView({
       ctx!.font = "12px ui-sans-serif, system-ui, sans-serif";
       ctx!.textBaseline = "middle";
       const occupied: CalloutRect[] = infoRectRef.current ? [infoRectRef.current] : [];
+      const shownLabels = new Set<number>();
+      let labelsAnimating = false;
       function label(index: number) {
         if (index === selected) return;
         const point = projected[index];
@@ -351,36 +367,54 @@ export function GraphView({
         const leader = graphCalloutLeader(point, rect, radius(index));
         if (leader === null) return;
         occupied.push(rect);
+        shownLabels.add(index);
+        if (!labelStarts.has(index)) labelStarts.set(index, time);
+        const reveal = graphCalloutReveal(time - labelStarts.get(index)!, motionPreference.matches);
+        if (!reveal.done) labelsAnimating = true;
         const appearance = graphDepthAppearance(point.depth);
         const opacity = index === active || index === hover ? 1 : appearance.opacity;
+        const visibleLeader = graphCalloutPrefix(leader, reveal.lineProgress);
         ctx!.strokeStyle = appearance.color;
         ctx!.lineWidth = 1;
-        ctx!.globalAlpha = opacity * 0.7;
-        ctx!.beginPath();
-        ctx!.moveTo(leader[0].x, leader[0].y);
-        for (let i = 1; i < leader.length; i++) ctx!.lineTo(leader[i].x, leader[i].y);
-        ctx!.stroke();
-        ctx!.globalAlpha = opacity;
+        if (visibleLeader.length > 1) {
+          ctx!.globalAlpha = opacity * 0.7;
+          ctx!.beginPath();
+          ctx!.moveTo(visibleLeader[0].x, visibleLeader[0].y);
+          for (let i = 1; i < visibleLeader.length; i++) ctx!.lineTo(visibleLeader[i].x, visibleLeader[i].y);
+          ctx!.stroke();
+        }
+        if (reveal.labelProgress === 0) return;
+        const end = leader[leader.length - 1];
+        const scale = 0.94 + 0.06 * reveal.labelProgress;
+        ctx!.save();
+        ctx!.translate(end.x, end.y);
+        ctx!.scale(scale, scale);
+        ctx!.translate(-end.x, -end.y);
+        ctx!.globalAlpha = opacity * reveal.labelProgress;
         ctx!.fillStyle = palette.surface;
         ctx!.beginPath();
         ctx!.roundRect(rect.x, rect.y, rect.width, rect.height, 4);
         ctx!.fill();
-        ctx!.globalAlpha = opacity * 0.45;
+        ctx!.globalAlpha = opacity * reveal.labelProgress * 0.45;
         ctx!.stroke();
-        ctx!.globalAlpha = opacity;
+        ctx!.globalAlpha = opacity * reveal.labelProgress;
         ctx!.fillStyle = palette.ink;
         ctx!.fillText(text.title, rect.x + 6, rect.y + rect.height / 2);
+        ctx!.restore();
       }
-      // 현재 시점에서 가장 가까운 다섯 노트만 이름을 표시한다.
-      for (const index of closestGraphCallouts(projected, order)) label(index);
+      // 유지 중인 이름은 재시작하지 않고, 사라졌다 다시 나타날 때만 선을 그린다.
+      for (const index of closest) label(index);
+      for (const index of labelStarts.keys()) {
+        if (!shownLabels.has(index)) labelStarts.delete(index);
+      }
       if (performance.now() - started > 20) slowFrames++;
       else slowFrames = Math.max(0, slowFrames - 1);
       if (slowFrames >= 4 && quality > 0.65) {
         quality = 0.65;
         resize();
       }
-      // 배치가 끝나면 RAF 자체를 멈추고 입력·크기·테마 변경 때만 다시 그린다.
-      if (step < maxSteps && pointers.size === 0 && selected < 0) requestDraw();
+      // 배치와 짧은 등장 효과가 끝나면 RAF 자체를 멈춘다.
+      if (labelsAnimating || (step < maxSteps && pointers.size === 0 && selected < 0)) requestDraw();
     }
 
     function localPoint(event: { clientX: number; clientY: number }): Point {
@@ -548,6 +582,7 @@ export function GraphView({
     themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["class", "style", "data-theme"] });
     const colorScheme = window.matchMedia("(prefers-color-scheme: dark)");
     colorScheme.addEventListener("change", readPalette);
+    motionPreference.addEventListener("change", requestDraw);
     window.addEventListener("resize", resize);
     document.addEventListener("visibilitychange", visibilityChanged);
     document.addEventListener("pointerdown", outsidePointerDown);
@@ -568,6 +603,7 @@ export function GraphView({
       intersectionObserver.disconnect();
       themeObserver.disconnect();
       colorScheme.removeEventListener("change", readPalette);
+      motionPreference.removeEventListener("change", requestDraw);
       window.removeEventListener("resize", resize);
       document.removeEventListener("visibilitychange", visibilityChanged);
       document.removeEventListener("pointerdown", outsidePointerDown);
