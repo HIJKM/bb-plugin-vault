@@ -6,6 +6,8 @@ import {
   GRAPH_MAX_STEPS,
   createGraphProjection,
   projectGraphNode,
+  rotateGraphCamera,
+  DEFAULT_GRAPH_CAMERA,
 } from "./graph-layout.ts";
 
 describe("createGraphLayout", () => {
@@ -130,7 +132,14 @@ describe("stepGraphLayout", () => {
 });
 
 describe("graph projection", () => {
-  const camera = { yaw: 0, pitch: 0, scale: 1, x: 0, y: 0 };
+  const camera = { orientation: { x: 0, y: 0, z: 0, w: 1 }, scale: 1, x: 0, y: 0 };
+
+  it("preserves the initial view from the previous yaw and pitch camera", () => {
+    const projected = projectGraphNode({ x: 100, y: 50, z: 75 }, DEFAULT_GRAPH_CAMERA, 800, 600);
+    assert.ok(Math.abs(projected.x - 534.4290372376008) < 1e-8);
+    assert.ok(Math.abs(projected.y - 363.12567257293495) < 1e-8);
+    assert.ok(Math.abs(projected.depth - 25.508850389867064) < 1e-8);
+  });
 
   it("centers the world and makes nearer notes larger", () => {
     const project = createGraphProjection(camera, 800, 600);
@@ -149,10 +158,14 @@ describe("graph projection", () => {
 
   it("rotates around the world center and applies pixel pan and camera zoom", () => {
     const point = { x: 100, y: 0, z: 0 };
-    const rotated = projectGraphNode(point, { ...camera, yaw: Math.PI / 2 }, 800, 600);
+    const rotated = projectGraphNode(point, {
+      ...camera, orientation: { x: 0, y: Math.SQRT1_2, z: 0, w: Math.SQRT1_2 },
+    }, 800, 600);
     assert.ok(Math.abs(rotated.x - 400) < 1e-8);
     assert.ok(Math.abs(rotated.depth + 100) < 1e-8);
-    const pitched = projectGraphNode({ x: 0, y: 100, z: 0 }, { ...camera, pitch: Math.PI / 2 }, 800, 600);
+    const pitched = projectGraphNode({ x: 0, y: 100, z: 0 }, {
+      ...camera, orientation: { x: Math.SQRT1_2, y: 0, z: 0, w: Math.SQRT1_2 },
+    }, 800, 600);
     assert.ok(Math.abs(pitched.y - 300) < 1e-8);
     assert.ok(Math.abs(pitched.depth - 100) < 1e-8);
     const original = projectGraphNode(point, camera, 800, 600);
@@ -176,8 +189,10 @@ describe("graph projection", () => {
       path: `${index}.md`, name: `${index}`,
     })), []);
     for (const [width, height] of [[390, 640], [1280, 720]]) {
-      for (const yaw of [0, 1, 2, 3]) {
-        const project = createGraphProjection({ ...camera, yaw, pitch: yaw / 2 }, width, height);
+      for (const drag of [0, 125, 250, 375]) {
+        const rotatedCamera = { ...camera };
+        rotateGraphCamera(rotatedCamera, drag, drag / 2);
+        const project = createGraphProjection(rotatedCamera, width, height);
         for (const node of layout.nodes) {
           const outerNode = { x: node.x / 0.78, y: node.y / 0.78, z: node.z / 0.78 };
           const projected = project(outerNode);
@@ -187,5 +202,98 @@ describe("graph projection", () => {
         }
       }
     }
+  });
+});
+
+describe("rotateGraphCamera", () => {
+  it("keeps horizontal dragging aligned to the screen after a 90-degree tilt", () => {
+    const camera = { orientation: { x: 0, y: 0, z: 0, w: 1 }, scale: 1, x: 0, y: 0 };
+    rotateGraphCamera(camera, 0, Math.PI / (2 * 0.008));
+    const frontNote = { x: 0, y: -100, z: 0 };
+    const before = projectGraphNode(frontNote, camera, 800, 600);
+    assert.ok(Math.abs(before.x - 400) < 1e-8);
+    assert.ok(Math.abs(before.y - 300) < 1e-8);
+    assert.ok(Math.abs(before.depth - 100) < 1e-8);
+    rotateGraphCamera(camera, 20, 0);
+    const after = projectGraphNode(frontNote, camera, 800, 600);
+    assert.ok(after.x > before.x);
+    assert.ok(Math.abs(after.y - before.y) < 1e-8);
+    assert.ok(after.depth < before.depth);
+  });
+
+  it("moves front-facing notes downward when dragging down", () => {
+    const camera = { orientation: { x: 0, y: 0, z: 0, w: 1 }, scale: 1, x: 0, y: 0 };
+    rotateGraphCamera(camera, 0, 20);
+    const projected = projectGraphNode({ x: 0, y: 0, z: 100 }, camera, 800, 600);
+    assert.ok(projected.y > 300);
+    assert.ok(Math.abs(projected.x - 400) < 1e-8);
+  });
+
+  it("continues through both poles during repeated vertical dragging", () => {
+    const camera = { orientation: { x: 0, y: 0, z: 0, w: 1 }, scale: 1, x: 0, y: 0 };
+    const frontNote = { x: 0, y: 0, z: 100 };
+    const sixtyDegrees = Math.PI / (3 * 0.008);
+    for (let step = 1; step <= 6; step++) {
+      rotateGraphCamera(camera, 0, sixtyDegrees);
+      const projected = projectGraphNode(frontNote, camera, 800, 600);
+      if (step === 2) assert.ok(projected.depth < 0);
+      if (step === 4) assert.ok(projected.y < 300);
+      if (step === 6) {
+        assert.ok(Math.abs(projected.depth - 100) < 1e-8);
+        assert.ok(Math.abs(projected.y - 300) < 1e-8);
+      }
+    }
+  });
+
+  it("makes diagonal rotation independent of pointer event batching", () => {
+    const singleDrag = { ...DEFAULT_GRAPH_CAMERA };
+    const splitDrag = { ...DEFAULT_GRAPH_CAMERA };
+    rotateGraphCamera(singleDrag, 120, 80);
+    for (let step = 0; step < 8; step++) rotateGraphCamera(splitDrag, 15, 10);
+    const note = { x: 100, y: 50, z: 75 };
+    const single = projectGraphNode(note, singleDrag, 800, 600);
+    const split = projectGraphNode(note, splitDrag, 800, 600);
+    for (const axis of ["x", "y", "depth"] as const) {
+      assert.ok(Math.abs(single[axis] - split[axis]) < 1e-8);
+    }
+  });
+
+  it("restores the current view when a drag is reversed", () => {
+    const camera = { ...DEFAULT_GRAPH_CAMERA, scale: 2, x: 30, y: -15 };
+    const before = structuredClone(camera);
+    rotateGraphCamera(camera, 43, -71);
+    rotateGraphCamera(camera, -43, 71);
+    for (const axis of ["x", "y", "z", "w"] as const) {
+      assert.ok(Math.abs(camera.orientation[axis] - before.orientation[axis]) < 1e-12);
+    }
+    assert.equal(camera.scale, 2);
+    assert.equal(camera.x, 30);
+    assert.equal(camera.y, -15);
+  });
+
+  it("keeps the default orientation unchanged and treats zero movement as a no-op", () => {
+    const original = structuredClone(DEFAULT_GRAPH_CAMERA);
+    const camera = { ...DEFAULT_GRAPH_CAMERA };
+    rotateGraphCamera(camera, 0, 0);
+    assert.strictEqual(camera.orientation, DEFAULT_GRAPH_CAMERA.orientation);
+    rotateGraphCamera(camera, 12, 7);
+    assert.notStrictEqual(camera.orientation, DEFAULT_GRAPH_CAMERA.orientation);
+    assert.deepEqual(DEFAULT_GRAPH_CAMERA, original);
+  });
+
+  it("stays normalized after twenty thousand rotations without changing note positions", () => {
+    const camera = { ...DEFAULT_GRAPH_CAMERA };
+    for (let step = 0; step < 20000; step++) {
+      rotateGraphCamera(camera, Math.sin(step) * 5, Math.cos(step * 0.7) * 5);
+    }
+    const { x, y, z, w } = camera.orientation;
+    assert.ok(Math.abs(Math.hypot(x, y, z, w) - 1) < 1e-12);
+    const note = { x: 100, y: 50, z: 75 };
+    const before = { ...note };
+    const projected = projectGraphNode(note, camera, 800, 600);
+    const rotatedX = (projected.x - 400) / projected.scale;
+    const rotatedY = (projected.y - 300) / projected.scale;
+    assert.ok(Math.abs(Math.hypot(rotatedX, rotatedY, projected.depth) - Math.hypot(100, 50, 75)) < 1e-8);
+    assert.deepEqual(note, before);
   });
 });

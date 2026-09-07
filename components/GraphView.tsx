@@ -6,6 +6,7 @@ import {
   createGraphProjection,
   DEFAULT_GRAPH_CAMERA,
   GRAPH_MAX_STEPS,
+  rotateGraphCamera,
   stepGraphLayout,
   type ProjectedGraphNode,
 } from "@/lib/graph-layout";
@@ -349,10 +350,7 @@ export function GraphView({
         const dx = point.x - drag.last.x;
         const dy = point.y - drag.last.y;
         if (drag.pan) { camera.x += dx; camera.y += dy; }
-        else {
-          camera.yaw = (camera.yaw + dx * 0.008) % (Math.PI * 2);
-          camera.pitch = clamp(camera.pitch + dy * 0.008, -Math.PI / 2, Math.PI / 2);
-        }
+        else rotateGraphCamera(camera, dx, dy);
         hover = -1;
         requestDraw();
       }
@@ -389,10 +387,10 @@ export function GraphView({
     function keyDown(event: globalThis.KeyboardEvent) {
       if (event.altKey || event.ctrlKey || event.metaKey) return;
       switch (event.key) {
-        case "ArrowLeft": camera.yaw -= 0.12; break;
-        case "ArrowRight": camera.yaw += 0.12; break;
-        case "ArrowUp": camera.pitch = clamp(camera.pitch - 0.12, -Math.PI / 2, Math.PI / 2); break;
-        case "ArrowDown": camera.pitch = clamp(camera.pitch + 0.12, -Math.PI / 2, Math.PI / 2); break;
+        case "ArrowLeft": rotateGraphCamera(camera, -15, 0); break;
+        case "ArrowRight": rotateGraphCamera(camera, 15, 0); break;
+        case "ArrowUp": rotateGraphCamera(camera, 0, -15); break;
+        case "ArrowDown": rotateGraphCamera(camera, 0, 15); break;
         case "+": case "=": zoom(1.2); break;
         case "-": zoom(1 / 1.2); break;
         case "Home": reset(); break;

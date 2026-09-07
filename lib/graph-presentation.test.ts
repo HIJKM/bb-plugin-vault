@@ -14,9 +14,11 @@ describe("graphDepthColor", () => {
 
   it("reverses a note's depth color when the camera rotates by 180 degrees", () => {
     const note = { x: 0, y: 0, z: 220 };
-    const camera = { yaw: 0, pitch: 0, scale: 1, x: 0, y: 0 };
+    const camera = { orientation: { x: 0, y: 0, z: 0, w: 1 }, scale: 1, x: 0, y: 0 };
     const front = projectGraphNode(note, camera, 800, 600);
-    const back = projectGraphNode(note, { ...camera, yaw: Math.PI }, 800, 600);
+    const back = projectGraphNode(note, {
+      ...camera, orientation: { x: 0, y: 1, z: 0, w: 0 },
+    }, 800, 600);
     assert.equal(graphDepthColor(front.depth), "#d67945");
     assert.equal(graphDepthColor(back.depth), "#477fe0");
     assert.deepEqual(note, { x: 0, y: 0, z: 220 });

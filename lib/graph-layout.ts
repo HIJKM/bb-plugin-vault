@@ -17,21 +17,46 @@ export type LayoutNode = GraphNode & {
 export type LayoutEdge = { from: number; to: number };
 export type GraphLayout = { nodes: LayoutNode[]; edges: LayoutEdge[] };
 
+export type Quaternion = { x: number; y: number; z: number; w: number };
+
 export type GraphCamera = {
-  yaw: number;
-  pitch: number;
+  orientation: Quaternion;
   scale: number;
   x: number;
   y: number;
 };
 
 export const DEFAULT_GRAPH_CAMERA: Readonly<GraphCamera> = {
-  yaw: 0.35,
-  pitch: -0.2,
+  // 기존 yaw 0.35 → pitch -0.2 순서의 첫 화면을 유지한다.
+  orientation: {
+    x: Math.sin(-0.1) * Math.cos(0.175),
+    y: Math.cos(-0.1) * Math.sin(0.175),
+    z: Math.sin(-0.1) * Math.sin(0.175),
+    w: Math.cos(-0.1) * Math.cos(0.175),
+  },
   scale: 1,
   x: 0,
   y: 0,
 };
+
+export function rotateGraphCamera(camera: GraphCamera, dx: number, dy: number): void {
+  const distance = Math.hypot(dx, dy);
+  if (distance === 0) return;
+  const halfAngle = distance * 0.004;
+  const axisScale = Math.sin(halfAngle) / distance;
+  const deltaX = -dy * axisScale;
+  const deltaY = dx * axisScale;
+  const deltaW = Math.cos(halfAngle);
+  const current = camera.orientation;
+  // 화면 축의 회전을 현재 방향 앞에 합성해 기울어진 뒤에도 드래그 방향을 유지한다.
+  const x = deltaW * current.x + deltaX * current.w + deltaY * current.z;
+  const y = deltaW * current.y - deltaX * current.z + deltaY * current.w;
+  const z = deltaW * current.z + deltaX * current.y - deltaY * current.x;
+  const w = deltaW * current.w - deltaX * current.x - deltaY * current.y;
+  const length = Math.hypot(x, y, z, w);
+  // 얕게 복사한 기본 카메라의 orientation도 변경하지 않는다.
+  camera.orientation = { x: x / length, y: y / length, z: z / length, w: w / length };
+}
 
 export type ProjectedGraphNode = {
   x: number;
@@ -44,20 +69,22 @@ export type ProjectedGraphNode = {
 
 export function createGraphProjection(camera: GraphCamera, width: number, height: number) {
   // 프레임마다 한 번 만들고 모든 노드에 재사용한다.
-  const cosYaw = Math.cos(camera.yaw);
-  const sinYaw = Math.sin(camera.yaw);
-  const cosPitch = Math.cos(camera.pitch);
-  const sinPitch = Math.sin(camera.pitch);
+  const { x: qx, y: qy, z: qz, w: qw } = camera.orientation;
+  const xx = qx * qx, yy = qy * qy, zz = qz * qz;
+  const xy = qx * qy, xz = qx * qz, yz = qy * qz;
+  const xw = qx * qw, yw = qy * qw, zw = qz * qw;
+  const m00 = 1 - 2 * (yy + zz), m01 = 2 * (xy - zw), m02 = 2 * (xz + yw);
+  const m10 = 2 * (xy + zw), m11 = 1 - 2 * (xx + zz), m12 = 2 * (yz - xw);
+  const m20 = 2 * (xz - yw), m21 = 2 * (yz + xw), m22 = 1 - 2 * (xx + yy);
   const baseScale = Math.min(width, height) / (GRAPH_WORLD_RADIUS * 2.5) * camera.scale;
   const centerX = width / 2 + camera.x;
   const centerY = height / 2 + camera.y;
   const cameraDistance = GRAPH_WORLD_RADIUS * 4;
 
   return (node: Pick<LayoutNode, "x" | "y" | "z">): ProjectedGraphNode => {
-    const rotatedX = node.x * cosYaw + node.z * sinYaw;
-    const yawDepth = -node.x * sinYaw + node.z * cosYaw;
-    const rotatedY = node.y * cosPitch - yawDepth * sinPitch;
-    const depth = node.y * sinPitch + yawDepth * cosPitch;
+    const rotatedX = node.x * m00 + node.y * m01 + node.z * m02;
+    const rotatedY = node.x * m10 + node.y * m11 + node.z * m12;
+    const depth = node.x * m20 + node.y * m21 + node.z * m22;
     const distance = cameraDistance - depth;
     const perspective = cameraDistance / Math.max(cameraDistance * 0.05, distance);
     const scale = baseScale * perspective;
