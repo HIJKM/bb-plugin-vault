@@ -38,6 +38,13 @@ const LIST_WIDTH_DEFAULT = 320;
 const LIST_WIDTH_MIN = 200;
 const LIST_WIDTH_MAX = 560;
 const LIST_WIDTH_STEP = 16;
+const LIST_COLLAPSED_KEY = "vault-list-collapsed";
+const GRAPH_PEEK_WIDTH_KEY = "vault-local-graph-width";
+const GRAPH_PEEK_WIDTH_DEFAULT = 224;
+const GRAPH_PEEK_WIDTH_MIN = 176;
+const GRAPH_PEEK_WIDTH_MAX = 560;
+const GRAPH_PEEK_WIDTH_STEP = 16;
+const GRAPH_PEEK_DOC_MIN = 160;
 
 function clampListWidth(width: number, max = LIST_WIDTH_MAX): number {
   const ceiling = Math.max(LIST_WIDTH_MIN, max);
@@ -57,6 +64,45 @@ function readStoredListWidth(): number {
 function storeListWidth(width: number): void {
   try {
     localStorage.setItem(LIST_WIDTH_KEY, String(width));
+  } catch {
+    // ignore quota / private mode
+  }
+}
+
+function clampGraphPeekWidth(width: number, max = GRAPH_PEEK_WIDTH_MAX): number {
+  const ceiling = Math.max(GRAPH_PEEK_WIDTH_MIN, max);
+  return Math.min(ceiling, Math.max(GRAPH_PEEK_WIDTH_MIN, Math.round(width)));
+}
+
+function readStoredGraphPeekWidth(): number {
+  try {
+    const parsed = Number(localStorage.getItem(GRAPH_PEEK_WIDTH_KEY));
+    if (!Number.isFinite(parsed)) return GRAPH_PEEK_WIDTH_DEFAULT;
+    return clampGraphPeekWidth(parsed);
+  } catch {
+    return GRAPH_PEEK_WIDTH_DEFAULT;
+  }
+}
+
+function storeGraphPeekWidth(width: number): void {
+  try {
+    localStorage.setItem(GRAPH_PEEK_WIDTH_KEY, String(width));
+  } catch {
+    // ignore quota / private mode
+  }
+}
+
+function readListCollapsed(): boolean {
+  try {
+    return localStorage.getItem(LIST_COLLAPSED_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function storeListCollapsed(collapsed: boolean): void {
+  try {
+    localStorage.setItem(LIST_COLLAPSED_KEY, collapsed ? "1" : "0");
   } catch {
     // ignore quota / private mode
   }
@@ -210,8 +256,11 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
   const compact = useIsCompactViewport();
   const route = decodeRoute(subPath);
   const [listWidth, setListWidth] = useState(readStoredListWidth);
+  const [listCollapsed, setListCollapsed] = useState(readListCollapsed);
+  const [graphPeekWidth, setGraphPeekWidth] = useState(readStoredGraphPeekWidth);
   const [resizing, setResizing] = useState(false);
   const resizeDrag = useRef<{ startX: number; startWidth: number; max: number } | null>(null);
+  const graphResizeDrag = useRef<{ startX: number; startWidth: number; max: number } | null>(null);
   const listScrollerRef = useRef<HTMLDivElement>(null);
 
   const applyListWidth = useCallback((width: number, max?: number) => {
@@ -219,6 +268,18 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
     setListWidth(next);
     storeListWidth(next);
     return next;
+  }, []);
+
+  const applyGraphPeekWidth = useCallback((width: number, max?: number) => {
+    const next = clampGraphPeekWidth(width, max);
+    setGraphPeekWidth(next);
+    storeGraphPeekWidth(next);
+    return next;
+  }, []);
+
+  const collapseList = useCallback((collapsed: boolean) => {
+    setListCollapsed(collapsed);
+    storeListCollapsed(collapsed);
   }, []);
 
   function onResizePointerDown(event: PointerEvent<HTMLDivElement>) {
@@ -261,6 +322,49 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
     } else if (event.key === "End") {
       event.preventDefault();
       applyListWidth(LIST_WIDTH_MAX);
+    }
+  }
+
+  function onGraphResizePointerDown(event: PointerEvent<HTMLDivElement>) {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    const pane = event.currentTarget.parentElement;
+    const row = pane?.parentElement;
+    const startWidth = pane?.getBoundingClientRect().width ?? graphPeekWidth;
+    const max = row ? Math.max(GRAPH_PEEK_WIDTH_MIN, row.clientWidth - GRAPH_PEEK_DOC_MIN) : GRAPH_PEEK_WIDTH_MAX;
+    graphResizeDrag.current = { startX: event.clientX, startWidth, max };
+    setResizing(true);
+  }
+
+  function onGraphResizePointerMove(event: PointerEvent<HTMLDivElement>) {
+    const drag = graphResizeDrag.current;
+    if (drag === null) return;
+    applyGraphPeekWidth(drag.startWidth - (event.clientX - drag.startX), drag.max);
+  }
+
+  function onGraphResizePointerUp(event: PointerEvent<HTMLDivElement>) {
+    if (graphResizeDrag.current === null) return;
+    graphResizeDrag.current = null;
+    setResizing(false);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  }
+
+  function onGraphResizeKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    if (event.key === "ArrowLeft") {
+      event.preventDefault();
+      applyGraphPeekWidth(graphPeekWidth + GRAPH_PEEK_WIDTH_STEP);
+    } else if (event.key === "ArrowRight") {
+      event.preventDefault();
+      applyGraphPeekWidth(graphPeekWidth - GRAPH_PEEK_WIDTH_STEP);
+    } else if (event.key === "Home") {
+      event.preventDefault();
+      applyGraphPeekWidth(GRAPH_PEEK_WIDTH_MIN);
+    } else if (event.key === "End") {
+      event.preventDefault();
+      applyGraphPeekWidth(GRAPH_PEEK_WIDTH_MAX);
     }
   }
 
@@ -537,26 +641,39 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
         }
       }}
     >
-      <div
-        data-allow-pan
-        className="flex gap-1 overflow-x-auto border-b border-border px-2 py-2 touch-pan-x"
-      >
-        {vaults.map((vault) => {
-          const selected = vault.id === vaultId;
-          return (
-            <button
-              key={vault.id}
-              type="button"
-              className={cn(
-                "shrink-0 rounded-md px-2.5 py-1 text-xs",
-                selected ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:bg-state-hover",
-              )}
-              onClick={() => goTo(vault.id, "")}
-            >
-              {vault.name}
-            </button>
-          );
-        })}
+      <div className="flex items-center border-b border-border">
+        <div
+          data-allow-pan
+          className="flex min-w-0 flex-1 gap-1 overflow-x-auto px-2 py-2 touch-pan-x"
+        >
+          {vaults.map((vault) => {
+            const selected = vault.id === vaultId;
+            return (
+              <button
+                key={vault.id}
+                type="button"
+                className={cn(
+                  "shrink-0 rounded-md px-2.5 py-1 text-xs",
+                  selected ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:bg-state-hover",
+                )}
+                onClick={() => goTo(vault.id, "")}
+              >
+                {vault.name}
+              </button>
+            );
+          })}
+        </div>
+        {!compact ? (
+          <button
+            type="button"
+            aria-label="파일 목록 접기"
+            data-testid="vault-list-collapse"
+            className="mr-1 inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-state-hover hover:text-foreground"
+            onClick={() => collapseList(true)}
+          >
+            <Icon name="ChevronLeft" className="size-3.5" />
+          </button>
+        ) : null}
       </div>
       <Toolbar
         folder={listFolder}
@@ -669,7 +786,7 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
               {!compact ? (
                 <button
                   type="button"
-                  aria-label="그래프 미리보기"
+                  aria-label="로컬 그래프"
                   aria-pressed={graphPeek}
                   data-testid="vault-doc-graph"
                   className={cn(
@@ -731,13 +848,35 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
             {graphPeek && !compact ? (
               <div
                 data-testid="vault-graph-peek"
-                className="flex w-56 min-w-44 max-w-[42%] shrink-0 flex-col border-l border-border"
+                aria-label="로컬 그래프"
+                className="relative flex min-h-0 shrink-0 flex-col border-l border-border"
+                style={{ width: graphPeekWidth, maxWidth: `calc(100% - ${GRAPH_PEEK_DOC_MIN}px)` }}
               >
+                <div
+                  role="separator"
+                  aria-orientation="vertical"
+                  aria-label="로컬 그래프 너비"
+                  aria-valuemin={GRAPH_PEEK_WIDTH_MIN}
+                  aria-valuemax={GRAPH_PEEK_WIDTH_MAX}
+                  aria-valuenow={graphPeekWidth}
+                  tabIndex={0}
+                  className={cn(
+                    "absolute inset-y-0 left-0 z-10 w-3 -translate-x-1/2 cursor-col-resize touch-none",
+                    "after:absolute after:inset-y-0 after:left-1/2 after:w-px after:-translate-x-1/2",
+                    resizing ? "after:bg-primary" : "hover:after:bg-border",
+                  )}
+                  onPointerDown={onGraphResizePointerDown}
+                  onPointerMove={onGraphResizePointerMove}
+                  onPointerUp={onGraphResizePointerUp}
+                  onPointerCancel={onGraphResizePointerUp}
+                  onDoubleClick={() => applyGraphPeekWidth(GRAPH_PEEK_WIDTH_DEFAULT)}
+                  onKeyDown={onGraphResizeKeyDown}
+                />
                 {loadingGraph && graph === null ? (
                   <p className="p-4 text-sm text-muted-foreground">그래프를 그리는 중…</p>
                 ) : (
                   <GraphView
-                    variant="peek"
+                    variant="local"
                     nodes={graph?.nodes ?? []}
                     edges={graph?.edges ?? []}
                     activePath={activePath}
@@ -796,34 +935,44 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
         resizing ? "select-none" : "",
       )}
     >
-      {showList ? (
-        compact ? (
-          listPane
-        ) : (
-          <div className="relative flex min-h-0 max-w-[70%] shrink-0" style={{ width: listWidth }}>
-            {listPane}
-            <div
-              role="separator"
-              aria-orientation="vertical"
-              aria-label="사이드바 너비"
-              aria-valuemin={LIST_WIDTH_MIN}
-              aria-valuemax={LIST_WIDTH_MAX}
-              aria-valuenow={listWidth}
-              tabIndex={0}
-              className={cn(
-                "absolute inset-y-0 right-0 z-10 w-3 translate-x-1/2 cursor-col-resize touch-none",
-                "after:absolute after:inset-y-0 after:left-1/2 after:w-px after:-translate-x-1/2",
-                resizing ? "after:bg-primary" : "hover:after:bg-border",
-              )}
-              onPointerDown={onResizePointerDown}
-              onPointerMove={onResizePointerMove}
-              onPointerUp={onResizePointerUp}
-              onPointerCancel={onResizePointerUp}
-              onDoubleClick={() => applyListWidth(LIST_WIDTH_DEFAULT)}
-              onKeyDown={onResizeKeyDown}
-            />
-          </div>
-        )
+      {compact ? (
+        showList ? listPane : null
+      ) : listCollapsed ? (
+        <div className="flex h-full shrink-0 flex-col border-r border-border">
+          <button
+            type="button"
+            aria-label="파일 목록 펼치기"
+            data-testid="vault-list-expand"
+            className="m-1 inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-state-hover hover:text-foreground"
+            onClick={() => collapseList(false)}
+          >
+            <Icon name="ChevronRight" className="size-3.5" />
+          </button>
+        </div>
+      ) : showList ? (
+        <div className="relative flex min-h-0 max-w-[70%] shrink-0" style={{ width: listWidth }}>
+          {listPane}
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="사이드바 너비"
+            aria-valuemin={LIST_WIDTH_MIN}
+            aria-valuemax={LIST_WIDTH_MAX}
+            aria-valuenow={listWidth}
+            tabIndex={0}
+            className={cn(
+              "absolute inset-y-0 right-0 z-10 w-3 translate-x-1/2 cursor-col-resize touch-none",
+              "after:absolute after:inset-y-0 after:left-1/2 after:w-px after:-translate-x-1/2",
+              resizing ? "after:bg-primary" : "hover:after:bg-border",
+            )}
+            onPointerDown={onResizePointerDown}
+            onPointerMove={onResizePointerMove}
+            onPointerUp={onResizePointerUp}
+            onPointerCancel={onResizePointerUp}
+            onDoubleClick={() => applyListWidth(LIST_WIDTH_DEFAULT)}
+            onKeyDown={onResizeKeyDown}
+          />
+        </div>
       ) : null}
       {showDetail ? detailPane : null}
     </div>

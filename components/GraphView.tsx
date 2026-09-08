@@ -52,7 +52,7 @@ export function GraphView({
   edges: GraphEdge[];
   activePath: string;
   onOpen: (path: string) => void;
-  variant?: "full" | "peek";
+  variant?: "full" | "local";
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -64,8 +64,8 @@ export function GraphView({
   const infoExitingRef = useRef(false);
   const infoFocusRef = useRef(false);
   const controlsRef = useRef<Controls | null>(null);
-  const propsRef = useRef({ activePath, onOpen, peek: variant === "peek" });
-  propsRef.current = { activePath, onOpen, peek: variant === "peek" };
+  const propsRef = useRef({ activePath, onOpen, local: variant === "local" });
+  propsRef.current = { activePath, onOpen, local: variant === "local" };
   const helpId = useId();
   const [simplified, setSimplified] = useState(false);
   const [info, setInfo] = useState<(GraphNode & { connections: number; color: string }) | null>(null);
@@ -300,6 +300,7 @@ export function GraphView({
       if (index < 0) {
         focusIndex = -1;
         focusFrom = null;
+        syncLocalSelection(path);
         requestDraw();
         return;
       }
@@ -310,7 +311,17 @@ export function GraphView({
         aimGraphCameraAt(camera, layout.nodes[index]);
         focusFrom = null;
       }
+      syncLocalSelection(path);
       requestDraw();
+    }
+    function syncLocalSelection(path: string) {
+      if (!propsRef.current.local) return;
+      const index = indices.get(path) ?? -1;
+      if (index < 0) {
+        if (infoIndex >= 0 || selected >= 0) selectInfo(-1);
+        return;
+      }
+      selectInfo(index, false);
     }
     function applyFocus(time: number) {
       if (focusIndex < 0 || focusFrom === null) return false;
@@ -394,7 +405,7 @@ export function GraphView({
       else close();
       requestDraw();
     }
-    function selectInfo(index: number) {
+    function selectInfo(index: number, stealFocus = true) {
       // 빈 공간을 탭할 때만 선택을 해제해 원래 파일 강조로 돌아간다.
       if (index < 0) {
         selected = -1;
@@ -405,10 +416,11 @@ export function GraphView({
       if (index === infoIndex) return;
       selected = index;
       infoIndex = index;
-      infoFocusRef.current = true;
+      infoFocusRef.current = stealFocus;
       const show = () => {
         if (disposed || selected !== index || infoIndex !== index) return;
-        infoAnchorRef.current = { ...projected[index], radius: radius(index) };
+        const point = projected[index];
+        if (point) infoAnchorRef.current = { ...point, radius: radius(index) };
         setInfo({ ...nodes[index], connections: connections[index], color: SELECTED_NODE_COLOR });
         requestDraw();
       };
@@ -427,7 +439,7 @@ export function GraphView({
       const focusing = applyFocus(time);
       const started = performance.now();
       // 조작 중에는 배치를 고정해 손가락 아래의 노트가 움직이지 않게 한다.
-      if (step < maxSteps && pointers.size === 0 && selected < 0) {
+      if (step < maxSteps && pointers.size === 0 && (selected < 0 || propsRef.current.local)) {
         const movement = stepGraphLayout(layout, step++);
         settledFrames = movement < 0.08 ? settledFrames + 1 : 0;
         if (settledFrames >= 8) step = maxSteps;
@@ -684,7 +696,7 @@ export function GraphView({
       if (canvas!.hasPointerCapture(event.pointerId)) canvas!.releasePointerCapture(event.pointerId);
       requestDraw();
       if (clicked !== null) {
-        if (propsRef.current.peek) {
+        if (propsRef.current.local) {
           if (clicked >= 0) propsRef.current.onOpen(nodes[clicked].path);
         } else {
           selectInfo(clicked);
@@ -803,7 +815,7 @@ export function GraphView({
           <canvas
             ref={canvasRef}
             data-allow-pan
-            aria-label="3D 노트 그래프"
+            aria-label={variant === "local" ? "로컬 그래프" : "3D 노트 그래프"}
             aria-describedby={helpId}
             tabIndex={0}
             className="absolute inset-0 block size-full cursor-grab touch-none outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring active:cursor-grabbing"
@@ -837,12 +849,14 @@ export function GraphView({
             <p className="mt-1 break-all text-[11px] text-muted-foreground">{info.path}</p>
             <div className="mt-2 flex items-center justify-between gap-2">
               <p className="text-[11px] text-muted-foreground">연결된 노트 {info.connections}개</p>
-              <Button type="button" variant="ghost" size="sm" className="h-7 shrink-0 px-2 text-xs" style={{ color: info.color }} onClick={() => controlsRef.current?.openFile()}>파일 열기</Button>
+              {variant === "local" ? null : (
+                <Button type="button" variant="ghost" size="sm" className="h-7 shrink-0 px-2 text-xs" style={{ color: info.color }} onClick={() => controlsRef.current?.openFile()}>파일 열기</Button>
+              )}
             </div>
           </div>
         )}
       </div>
-      {nodes.length > 0 && variant !== "peek" && (
+      {nodes.length > 0 && variant !== "local" && (
         <div className="flex shrink-0 flex-wrap items-center gap-2 border-t border-border px-3 py-2">
           <div className="min-w-0 flex-1 text-xs text-muted-foreground">
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
