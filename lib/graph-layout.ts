@@ -58,6 +58,75 @@ export function rotateGraphCamera(camera: GraphCamera, dx: number, dy: number): 
   camera.orientation = { x: x / length, y: y / length, z: z / length, w: w / length };
 }
 
+function normalizeQuaternion(x: number, y: number, z: number, w: number): Quaternion {
+  const length = Math.hypot(x, y, z, w) || 1;
+  return { x: x / length, y: y / length, z: z / length, w: w / length };
+}
+
+/** Rotate `from` onto `to`. Both should be unit vectors. */
+export function quaternionFromTo(
+  from: { x: number; y: number; z: number },
+  to: { x: number; y: number; z: number },
+): Quaternion {
+  const dot = from.x * to.x + from.y * to.y + from.z * to.z;
+  if (dot > 0.999999) return { x: 0, y: 0, z: 0, w: 1 };
+  if (dot < -0.999999) {
+    const axis = Math.abs(from.x) < 0.9 ? { x: 1, y: 0, z: 0 } : { x: 0, y: 1, z: 0 };
+    return normalizeQuaternion(
+      from.y * axis.z - from.z * axis.y,
+      from.z * axis.x - from.x * axis.z,
+      from.x * axis.y - from.y * axis.x,
+      0,
+    );
+  }
+  return normalizeQuaternion(
+    from.y * to.z - from.z * to.y,
+    from.z * to.x - from.x * to.z,
+    from.x * to.y - from.y * to.x,
+    1 + dot,
+  );
+}
+
+export function slerpQuaternion(a: Quaternion, b: Quaternion, t: number): Quaternion {
+  let bx = b.x, by = b.y, bz = b.z, bw = b.w;
+  let dot = a.x * bx + a.y * by + a.z * bz + a.w * bw;
+  if (dot < 0) {
+    bx = -bx; by = -by; bz = -bz; bw = -bw;
+    dot = -dot;
+  }
+  if (dot > 0.9995) {
+    return normalizeQuaternion(
+      a.x + (bx - a.x) * t,
+      a.y + (by - a.y) * t,
+      a.z + (bz - a.z) * t,
+      a.w + (bw - a.w) * t,
+    );
+  }
+  const theta = Math.acos(Math.min(1, dot));
+  const sin = Math.sin(theta);
+  const wa = Math.sin((1 - t) * theta) / sin;
+  const wb = Math.sin(t * theta) / sin;
+  return {
+    x: a.x * wa + bx * wb,
+    y: a.y * wa + by * wb,
+    z: a.z * wa + bz * wb,
+    w: a.w * wa + bw * wb,
+  };
+}
+
+/** Point the camera so `point` sits on the near depth axis. */
+export function aimGraphCameraAt(
+  camera: GraphCamera,
+  point: { x: number; y: number; z: number },
+): void {
+  const length = Math.hypot(point.x, point.y, point.z);
+  if (length < 1e-6) return;
+  camera.orientation = quaternionFromTo(
+    { x: point.x / length, y: point.y / length, z: point.z / length },
+    { x: 0, y: 0, z: 1 },
+  );
+}
+
 export type ProjectedGraphNode = {
   x: number;
   y: number;

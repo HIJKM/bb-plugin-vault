@@ -7,6 +7,8 @@ import {
   createGraphProjection,
   projectGraphNode,
   rotateGraphCamera,
+  aimGraphCameraAt,
+  slerpQuaternion,
   DEFAULT_GRAPH_CAMERA,
 } from "./graph-layout.ts";
 
@@ -295,5 +297,51 @@ describe("rotateGraphCamera", () => {
     const rotatedY = (projected.y - 300) / projected.scale;
     assert.ok(Math.abs(Math.hypot(rotatedX, rotatedY, projected.depth) - Math.hypot(100, 50, 75)) < 1e-8);
     assert.deepEqual(note, before);
+  });
+});
+
+describe("aimGraphCameraAt", () => {
+  it("brings the target note to the front without moving other camera fields", () => {
+    const camera = { orientation: { x: 0, y: 0, z: 0, w: 1 }, scale: 1.5, x: 12, y: -8 };
+    const note = { x: 100, y: 40, z: -30 };
+    const behind = { x: -100, y: -40, z: 30 };
+    aimGraphCameraAt(camera, note);
+    const front = projectGraphNode(note, camera, 800, 600);
+    const back = projectGraphNode(behind, camera, 800, 600);
+    assert.ok(front.depth > 80);
+    assert.ok(front.depth > back.depth);
+    assert.ok(Math.abs(front.x - 412) < 1e-6);
+    assert.ok(Math.abs(front.y - 292) < 1e-6);
+    assert.equal(camera.scale, 1.5);
+    assert.equal(camera.x, 12);
+    assert.equal(camera.y, -8);
+  });
+
+  it("is a no-op at the origin so a single note does not spin", () => {
+    const camera = { ...DEFAULT_GRAPH_CAMERA };
+    const original = structuredClone(camera);
+    aimGraphCameraAt(camera, { x: 0, y: 0, z: 0 });
+    assert.deepEqual(camera, original);
+  });
+});
+
+describe("slerpQuaternion", () => {
+  it("returns the start, the end, and a midpoint that still faces the note", () => {
+    const start = { x: 0, y: 0, z: 0, w: 1 };
+    const camera = { orientation: { ...start }, scale: 1, x: 0, y: 0 };
+    aimGraphCameraAt(camera, { x: 0, y: 100, z: 0 });
+    const end = camera.orientation;
+    const mid = { orientation: slerpQuaternion(start, end, 0.5), scale: 1, x: 0, y: 0 };
+    const note = { x: 0, y: 100, z: 0 };
+    assert.deepEqual(slerpQuaternion(start, end, 0), start);
+    const finish = slerpQuaternion(start, end, 1);
+    for (const axis of ["x", "y", "z", "w"] as const) {
+      assert.ok(Math.abs(finish[axis] - end[axis]) < 1e-12);
+    }
+    const startDepth = projectGraphNode(note, { orientation: start, scale: 1, x: 0, y: 0 }, 800, 600).depth;
+    const midDepth = projectGraphNode(note, mid, 800, 600).depth;
+    const endDepth = projectGraphNode(note, camera, 800, 600).depth;
+    assert.ok(midDepth > startDepth);
+    assert.ok(endDepth > midDepth);
   });
 });

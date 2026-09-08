@@ -277,6 +277,7 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
   const [previewBaseUrl, setPreviewBaseUrl] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<DocViewMode>("preview");
   const [graphOpen, setGraphOpen] = useState(false);
+  const [graphPeek, setGraphPeek] = useState(false);
   const [graph, setGraph] = useState<{ nodes: GraphNode[]; edges: GraphEdge[] } | null>(null);
   const [loadingGraph, setLoadingGraph] = useState(false);
 
@@ -294,10 +295,11 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
   useEffect(() => {
     setGraph(null);
     setGraphOpen(false);
+    setGraphPeek(false);
   }, [vaultId]);
 
   useEffect(() => {
-    if (!graphOpen || vaultId === null || graph !== null) return;
+    if ((!graphOpen && !graphPeek) || vaultId === null || graph !== null) return;
     let cancelled = false;
     setLoadingGraph(true);
     void rpc
@@ -314,7 +316,7 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
     return () => {
       cancelled = true;
     };
-  }, [graph, graphOpen, rpc, vaultId]);
+  }, [graph, graphOpen, graphPeek, rpc, vaultId]);
   const viewingFile = activePath !== "" && isProbablyFile(activePath);
   const listFolder = viewingFile
     ? activePath.includes("/")
@@ -664,6 +666,23 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
           <div className="border-b border-border px-4 py-3">
             <div className="flex items-center gap-2">
               <h1 className="min-w-0 flex-1 truncate text-base font-medium">{fileLabel(doc.name)}</h1>
+              {!compact ? (
+                <button
+                  type="button"
+                  aria-label="그래프 미리보기"
+                  aria-pressed={graphPeek}
+                  data-testid="vault-doc-graph"
+                  className={cn(
+                    "inline-flex size-7 shrink-0 items-center justify-center rounded-md",
+                    graphPeek
+                      ? "bg-muted text-foreground"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                  onClick={() => setGraphPeek((open) => !open)}
+                >
+                  <Icon name="GitBranch" className="size-3.5" />
+                </button>
+              ) : null}
               {doc.kind === "markdown" || doc.kind === "html" ? (
                 <DocViewToggle mode={viewMode} onChange={setViewMode} />
               ) : null}
@@ -679,33 +698,58 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
               />
             ) : null}
           </div>
-          {doc.kind === "image" ? (
-            <ImagePreview url={doc.url} name={fileLabel(doc.name)} />
-          ) : (
-          <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain">
-            {doc.kind === "html" && viewMode === "preview" ? (
-              <iframe
-                title={doc.name}
-                sandbox=""
-                srcDoc={doc.content}
-                className="m-4 h-full min-h-[24rem] w-[calc(100%-2rem)] rounded-md border border-border bg-background"
-              />
-            ) : doc.kind === "markdown" && viewMode === "preview" ? (
-              <div className="flex w-full justify-center px-4 pt-6 sm:px-8 sm:pt-8">
-                <div className="w-full min-w-0 max-w-prose" onClickCapture={onWikiClick}>
-                  <Markdown content={markdown.body} />
-                </div>
-              </div>
-            ) : doc.kind === "markdown" || doc.kind === "html" || doc.kind === "text" ? (
-              <div className="p-4">
-                <SourceCode content={doc.content} path={doc.path} overflow="wrap" />
+          <div className="flex min-h-0 min-w-0 flex-1">
+            {doc.kind === "image" ? (
+              <div className="min-h-0 min-w-0 flex-1">
+                <ImagePreview url={doc.url} name={fileLabel(doc.name)} />
               </div>
             ) : (
-              <pre className="whitespace-pre-wrap break-all p-4 font-mono text-sm leading-6">{doc.content}</pre>
+            <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain">
+              {doc.kind === "html" && viewMode === "preview" ? (
+                <iframe
+                  title={doc.name}
+                  sandbox=""
+                  srcDoc={doc.content}
+                  className="m-4 h-full min-h-[24rem] w-[calc(100%-2rem)] rounded-md border border-border bg-background"
+                />
+              ) : doc.kind === "markdown" && viewMode === "preview" ? (
+                <div className="flex w-full justify-center px-4 pt-6 sm:px-8 sm:pt-8">
+                  <div className="w-full min-w-0 max-w-prose" onClickCapture={onWikiClick}>
+                    <Markdown content={markdown.body} />
+                  </div>
+                </div>
+              ) : doc.kind === "markdown" || doc.kind === "html" || doc.kind === "text" ? (
+                <div className="p-4">
+                  <SourceCode content={doc.content} path={doc.path} overflow="wrap" />
+                </div>
+              ) : (
+                <pre className="whitespace-pre-wrap break-all p-4 font-mono text-sm leading-6">{doc.content}</pre>
+              )}
+              {!(doc.kind === "html" && viewMode === "preview") ? <DocumentEndSpace /> : null}
+            </div>
             )}
-            {!(doc.kind === "html" && viewMode === "preview") ? <DocumentEndSpace /> : null}
+            {graphPeek && !compact ? (
+              <div
+                data-testid="vault-graph-peek"
+                className="flex w-56 min-w-44 max-w-[42%] shrink-0 flex-col border-l border-border"
+              >
+                {loadingGraph && graph === null ? (
+                  <p className="p-4 text-sm text-muted-foreground">그래프를 그리는 중…</p>
+                ) : (
+                  <GraphView
+                    variant="peek"
+                    nodes={graph?.nodes ?? []}
+                    edges={graph?.edges ?? []}
+                    activePath={activePath}
+                    onOpen={(path) => {
+                      if (vaultId === null) return;
+                      goTo(vaultId, path);
+                    }}
+                  />
+                )}
+              </div>
+            ) : null}
           </div>
-          )}
         </>
       )}
     </div>

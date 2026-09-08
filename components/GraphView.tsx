@@ -2,13 +2,17 @@ import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import type { GraphEdge, GraphNode } from "@/lib/note-graph";
 import {
+  aimGraphCameraAt,
   createGraphLayout,
   createGraphProjection,
   DEFAULT_GRAPH_CAMERA,
   GRAPH_MAX_STEPS,
+  quaternionFromTo,
   rotateGraphCamera,
+  slerpQuaternion,
   stepGraphLayout,
   type ProjectedGraphNode,
+  type Quaternion,
 } from "@/lib/graph-layout";
 import { countGraphConnections, graphDepthAppearance, GRAPH_DEPTH_APPEARANCES, GRAPH_DEPTH_COLORS } from "@/lib/graph-presentation";
 import {
@@ -25,6 +29,7 @@ const clamp = (value: number, min: number, max: number) => Math.min(max, Math.ma
 const SELECTED_NODE_COLOR = "#8b5cf6";
 const INFO_TRANSITION_MS = 180;
 const HOVER_EDGE_MS = 240;
+const FOCUS_MS = 560;
 const MAX_GRAPH_ZOOM = 8;
 type Point = { x: number; y: number };
 type Controls = {
@@ -33,6 +38,7 @@ type Controls = {
   reset: () => void;
   dismissInfo: () => void;
   openFile: () => void;
+  focusPath: (path: string) => void;
 };
 
 export function GraphView({
@@ -40,11 +46,13 @@ export function GraphView({
   edges,
   activePath,
   onOpen,
+  variant = "full",
 }: {
   nodes: GraphNode[];
   edges: GraphEdge[];
   activePath: string;
   onOpen: (path: string) => void;
+  variant?: "full" | "peek";
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -56,8 +64,8 @@ export function GraphView({
   const infoExitingRef = useRef(false);
   const infoFocusRef = useRef(false);
   const controlsRef = useRef<Controls | null>(null);
-  const propsRef = useRef({ activePath, onOpen });
-  propsRef.current = { activePath, onOpen };
+  const propsRef = useRef({ activePath, onOpen, peek: variant === "peek" });
+  propsRef.current = { activePath, onOpen, peek: variant === "peek" };
   const helpId = useId();
   const [simplified, setSimplified] = useState(false);
   const [info, setInfo] = useState<(GraphNode & { connections: number; color: string }) | null>(null);
@@ -254,6 +262,9 @@ export function GraphView({
     const edgeStride = Math.max(1, Math.ceil(layout.edges.length / edgeBudget));
     setSimplified(edgeStride > 1);
     let camera = { ...DEFAULT_GRAPH_CAMERA };
+    let focusIndex = -1;
+    let focusFrom: Quaternion | null = null;
+    let focusStarted = -1;
     let width = 0;
     let height = 0;
     let dpr = 1;
@@ -281,6 +292,50 @@ export function GraphView({
     let pinch: { distance: number; center: Point; scale: number; x: number; y: number } | null = null;
     let palette = { edge: "#888", ink: "#111", surface: "#fff" };
 
+    function interruptFocus() {
+      focusFrom = null;
+    }
+    function focusPath(path: string) {
+      const index = indices.get(path) ?? -1;
+      if (index < 0) {
+        focusIndex = -1;
+        focusFrom = null;
+        requestDraw();
+        return;
+      }
+      focusIndex = index;
+      focusFrom = { ...camera.orientation };
+      focusStarted = performance.now();
+      if (motionPreference.matches) {
+        aimGraphCameraAt(camera, layout.nodes[index]);
+        focusFrom = null;
+      }
+      requestDraw();
+    }
+    function applyFocus(time: number) {
+      if (focusIndex < 0 || focusFrom === null) return false;
+      const node = layout.nodes[focusIndex];
+      const length = Math.hypot(node.x, node.y, node.z);
+      if (length < 1e-6) {
+        focusFrom = null;
+        return false;
+      }
+      const t = clamp((time - focusStarted) / FOCUS_MS, 0, 1);
+      const eased = 1 - (1 - t) ** 3;
+      camera.orientation = slerpQuaternion(
+        focusFrom,
+        quaternionFromTo(
+          { x: node.x / length, y: node.y / length, z: node.z / length },
+          { x: 0, y: 0, z: 1 },
+        ),
+        eased,
+      );
+      if (t >= 1) {
+        focusFrom = null;
+        return false;
+      }
+      return true;
+    }
     function canDraw() {
       return !disposed && !document.hidden && inViewport && width > 0 && height > 0;
     }
@@ -369,6 +424,7 @@ export function GraphView({
         return;
       }
       lastFrame = time;
+      const focusing = applyFocus(time);
       const started = performance.now();
       // 조작 중에는 배치를 고정해 손가락 아래의 노트가 움직이지 않게 한다.
       if (step < maxSteps && pointers.size === 0 && selected < 0) {
@@ -522,7 +578,7 @@ export function GraphView({
         resize();
       }
       // 배치와 짧은 등장 효과가 끝나면 RAF 자체를 멈춘다.
-      if (hoverAnimating || labelsAnimating || (step < maxSteps && pointers.size === 0 && selected < 0)) requestDraw();
+      if (focusing || hoverAnimating || labelsAnimating || (step < maxSteps && pointers.size === 0 && selected < 0)) requestDraw();
     }
 
     function localPoint(event: { clientX: number; clientY: number }): Point {
@@ -539,6 +595,7 @@ export function GraphView({
       return -1;
     }
     function zoom(factor: number, point: Point = { x: width / 2, y: height / 2 }) {
+      interruptFocus();
       infoFocusRef.current = false;
       setHover(-1);
       const next = clamp(camera.scale * factor, 0.35, MAX_GRAPH_ZOOM);
@@ -549,6 +606,7 @@ export function GraphView({
       requestDraw();
     }
     function reset() {
+      interruptFocus();
       infoFocusRef.current = false;
       camera = { ...DEFAULT_GRAPH_CAMERA };
       setHover(-1);
@@ -586,6 +644,7 @@ export function GraphView({
         const current = pinchPoints();
         const next = clamp(pinch.scale * current.distance / pinch.distance, 0.35, MAX_GRAPH_ZOOM);
         const ratio = next / pinch.scale;
+        interruptFocus();
         camera.scale = next;
         camera.x = current.center.x - width / 2 - (pinch.center.x - width / 2 - pinch.x) * ratio;
         camera.y = current.center.y - height / 2 - (pinch.center.y - height / 2 - pinch.y) * ratio;
@@ -598,6 +657,7 @@ export function GraphView({
       if (drag.moved) {
         const dx = point.x - drag.last.x;
         const dy = point.y - drag.last.y;
+        interruptFocus();
         if (drag.pan) { camera.x += dx; camera.y += dy; }
         else rotateGraphCamera(camera, dx, dy);
         setHover(-1);
@@ -623,7 +683,13 @@ export function GraphView({
       }
       if (canvas!.hasPointerCapture(event.pointerId)) canvas!.releasePointerCapture(event.pointerId);
       requestDraw();
-      if (clicked !== null) selectInfo(clicked);
+      if (clicked !== null) {
+        if (propsRef.current.peek) {
+          if (clicked >= 0) propsRef.current.onOpen(nodes[clicked].path);
+        } else {
+          selectInfo(clicked);
+        }
+      }
     }
     function pointerLeave() {
       setHover(-1);
@@ -647,6 +713,7 @@ export function GraphView({
       }
       event.preventDefault();
       event.stopPropagation();
+      interruptFocus();
       infoFocusRef.current = false;
       setHover(-1);
       requestDraw();
@@ -667,7 +734,7 @@ export function GraphView({
     }
 
     controlsRef.current = {
-      redraw: requestDraw, zoom, reset,
+      redraw: requestDraw, zoom, reset, focusPath,
       dismissInfo: () => dismissInfo(true),
       openFile: () => {
         if (selected < 0) return;
@@ -678,6 +745,7 @@ export function GraphView({
     };
     resize();
     readPalette();
+    focusPath(propsRef.current.activePath);
     const resizeObserver = new ResizeObserver(resize);
     resizeObserver.observe(wrap);
     const intersectionObserver = new IntersectionObserver(([entry]) => {
@@ -724,7 +792,7 @@ export function GraphView({
     };
   }, [nodes, edges]);
 
-  useEffect(() => { controlsRef.current?.redraw(); }, [activePath]);
+  useEffect(() => { controlsRef.current?.focusPath(activePath); }, [activePath]);
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
@@ -774,7 +842,7 @@ export function GraphView({
           </div>
         )}
       </div>
-      {nodes.length > 0 && (
+      {nodes.length > 0 && variant !== "peek" && (
         <div className="flex shrink-0 flex-wrap items-center gap-2 border-t border-border px-3 py-2">
           <div className="min-w-0 flex-1 text-xs text-muted-foreground">
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
