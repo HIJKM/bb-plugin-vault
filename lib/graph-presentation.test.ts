@@ -5,8 +5,10 @@ import {
   countGraphConnections,
   graphDepthAppearance,
   graphDepthColor,
+  graphSelectionReveal,
   GRAPH_DEPTH_APPEARANCES,
   GRAPH_DEPTH_COLORS,
+  GRAPH_EDGE_REVEAL_MS,
 } from "./graph-presentation.ts";
 
 describe("graphDepthAppearance", () => {
@@ -109,5 +111,29 @@ describe("countGraphConnections", () => {
     const before = structuredClone(layout.edges);
     assert.deepEqual(countGraphConnections(layout.edges, layout.nodes.length), new Uint32Array([1, 2, 1, 0]));
     assert.deepEqual(layout.edges, before);
+  });
+});
+
+describe("graphSelectionReveal", () => {
+  it("grows connection edges for 240ms before the tooltip may appear", () => {
+    assert.equal(GRAPH_EDGE_REVEAL_MS, 240);
+    assert.deepEqual(graphSelectionReveal(0), { edgeProgress: 0, showTooltip: false });
+    const mid = graphSelectionReveal(120);
+    assert.ok(mid.edgeProgress > 0 && mid.edgeProgress < 1);
+    assert.equal(mid.showTooltip, false);
+    assert.deepEqual(graphSelectionReveal(240), { edgeProgress: 1, showTooltip: true });
+    assert.deepEqual(graphSelectionReveal(10000), { edgeProgress: 1, showTooltip: true });
+  });
+
+  it("keeps the tooltip hidden until the last millisecond of the edge grow", () => {
+    assert.equal(graphSelectionReveal(-50).showTooltip, false);
+    assert.equal(graphSelectionReveal(239).showTooltip, false);
+    assert.ok(graphSelectionReveal(239).edgeProgress < 1);
+  });
+
+  it("shows edges and tooltip immediately when motion is reduced", () => {
+    for (const elapsed of [-50, 0, 80, 239]) {
+      assert.deepEqual(graphSelectionReveal(elapsed, true), { edgeProgress: 1, showTooltip: true });
+    }
   });
 });

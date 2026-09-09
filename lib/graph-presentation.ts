@@ -29,6 +29,20 @@ export function graphDepthColor(depth: number): string {
   return graphDepthAppearance(depth).color;
 }
 
+export const GRAPH_EDGE_REVEAL_MS = 240;
+
+export function graphSelectionReveal(elapsed: number, reducedMotion = false): {
+  edgeProgress: number;
+  showTooltip: boolean;
+} {
+  if (reducedMotion) return { edgeProgress: 1, showTooltip: true };
+  const t = Math.max(0, Math.min(1, elapsed / GRAPH_EDGE_REVEAL_MS));
+  return {
+    edgeProgress: 1 - (1 - t) ** 3,
+    showTooltip: t >= 1,
+  };
+}
+
 export function countGraphConnections(edges: readonly LayoutEdge[], nodeCount: number): Uint32Array {
   const counts = new Uint32Array(nodeCount);
   for (const edge of edges) {

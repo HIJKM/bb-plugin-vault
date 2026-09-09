@@ -14,10 +14,16 @@ import {
   type ProjectedGraphNode,
   type Quaternion,
 } from "@/lib/graph-layout";
-import { countGraphConnections, graphDepthAppearance, GRAPH_DEPTH_APPEARANCES, GRAPH_DEPTH_COLORS } from "@/lib/graph-presentation";
+import {
+  countGraphConnections,
+  graphDepthAppearance,
+  graphSelectionReveal,
+  GRAPH_DEPTH_APPEARANCES,
+  GRAPH_DEPTH_COLORS,
+  GRAPH_EDGE_REVEAL_MS,
+} from "@/lib/graph-presentation";
 import {
   closestGraphCallouts,
-  GRAPH_CALLOUT_LINE_MS,
   graphCalloutLeader,
   graphCalloutPrefix,
   graphCalloutReveal,
@@ -28,7 +34,6 @@ import {
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 const SELECTED_NODE_COLOR = "#8b5cf6";
 const INFO_TRANSITION_MS = 180;
-const HOVER_EDGE_MS = 240;
 const FOCUS_MS = 560;
 const MAX_GRAPH_ZOOM = 8;
 type Point = { x: number; y: number };
@@ -120,43 +125,34 @@ export function GraphView({
     infoExitingRef.current = false;
     update();
     panel.style.opacity = "0";
-    panel.style.transform = "scale(0.92)";
+    panel.style.transform = "none";
     panel.style.pointerEvents = "none";
     panel.inert = true;
-    if (line) line.style.opacity = "1";
+    if (line) {
+      line.style.opacity = "0";
+      line.style.strokeDashoffset = "0";
+    }
     function showPanel() {
       if (disposed || exiting) return;
       const finish = () => {
         if (disposed || exiting) return;
         panel.style.opacity = "1";
-        panel.style.transform = "none";
         panel.style.pointerEvents = "auto";
         panel.inert = false;
+        if (line) line.style.opacity = "1";
         if (infoFocusRef.current) panel.focus({ preventScroll: true });
         panelAnimation?.cancel();
+        lineAnimation?.cancel();
       };
       if (reducedMotion) { finish(); return; }
-      panelAnimation = panel.animate([
-        { opacity: 0, transform: "scale(0.92)" },
-        { opacity: 1, transform: "scale(1)" },
-      ], { duration: INFO_TRANSITION_MS, easing: "cubic-bezier(0.16, 1, 0.3, 1)", fill: "forwards" });
+      const options: KeyframeAnimationOptions = {
+        duration: INFO_TRANSITION_MS, easing: "cubic-bezier(0.16, 1, 0.3, 1)", fill: "forwards",
+      };
+      if (line) lineAnimation = line.animate([{ opacity: 0 }, { opacity: 1 }], options);
+      panelAnimation = panel.animate([{ opacity: 0 }, { opacity: 1 }], options);
       panelAnimation.onfinish = finish;
     }
-    if (line && line.getAttribute("points") && !reducedMotion) {
-      line.style.strokeDashoffset = "1";
-      lineAnimation = line.animate([
-        { strokeDashoffset: "1" }, { strokeDashoffset: "0" },
-      ], { duration: GRAPH_CALLOUT_LINE_MS, easing: "ease-out", fill: "forwards" });
-      lineAnimation.onfinish = () => {
-        if (disposed || exiting) return;
-        line.style.strokeDashoffset = "0";
-        lineAnimation?.cancel();
-        showPanel();
-      };
-    } else {
-      if (line) line.style.strokeDashoffset = "0";
-      showPanel();
-    }
+    showPanel();
     const observer = new ResizeObserver(update);
     observer.observe(panel);
     observer.observe(wrapRef.current);
@@ -189,7 +185,7 @@ export function GraphView({
       const finish = () => {
         if (disposed) return;
         panel.style.opacity = "0";
-        panel.style.transform = "scale(0.92)";
+        panel.style.transform = "none";
         if (line) line.style.opacity = "0";
         lineAnimation?.cancel();
         panelAnimation?.cancel();
@@ -204,7 +200,7 @@ export function GraphView({
       };
       if (line) lineAnimation = line.animate([{ opacity: lineOpacity }, { opacity: 0 }], options);
       panelAnimation = panel.animate([
-        { opacity, transform }, { opacity: 0, transform: "scale(0.92)" },
+        { opacity }, { opacity: 0 },
       ], options);
       panelAnimation.onfinish = finish;
     }
@@ -280,6 +276,8 @@ export function GraphView({
     let hoverStarted = 0;
     let hoverEdges: typeof layout.edges = [];
     let selected = -1;
+    let selectedStarted = 0;
+    let infoDelay: ReturnType<typeof setTimeout> | null = null;
     let infoIndex = -1;
     let projected: ProjectedGraphNode[] = [];
     const labelText = new Map<number, { title: string; width: number }>();
@@ -390,7 +388,13 @@ export function GraphView({
     function radius(index: number) {
       return clamp(2 * projected[index].perspective * camera.scale ** 0.2, 1, 3.2);
     }
+    function clearInfoDelay() {
+      if (infoDelay === null) return;
+      clearTimeout(infoDelay);
+      infoDelay = null;
+    }
     function dismissInfo(restoreFocus = false) {
+      clearInfoDelay();
       if (infoIndex < 0 && infoExitRef.current === null) return;
       infoIndex = -1;
       if (restoreFocus) canvas!.focus({ preventScroll: true });
@@ -414,18 +418,30 @@ export function GraphView({
         return;
       }
       if (index === infoIndex) return;
+      clearInfoDelay();
       selected = index;
       infoIndex = index;
+      selectedStarted = performance.now();
+      focusedNode = index;
+      focusedEdges = layout.edges.filter(({ from, to }) => from === index || to === index);
       infoFocusRef.current = stealFocus;
-      const show = () => {
+      if (infoExitRef.current) {
+        infoExitRef.current(() => {
+          if (disposed) return;
+          infoAnchorRef.current = null;
+          infoRectRef.current = null;
+          setInfo(null);
+        });
+      }
+      const wait = motionPreference.matches || focusedEdges.length === 0 ? 0 : GRAPH_EDGE_REVEAL_MS;
+      infoDelay = setTimeout(() => {
+        infoDelay = null;
         if (disposed || selected !== index || infoIndex !== index) return;
         const point = projected[index];
         if (point) infoAnchorRef.current = { ...point, radius: radius(index) };
         setInfo({ ...nodes[index], connections: connections[index], color: SELECTED_NODE_COLOR });
         requestDraw();
-      };
-      if (infoExitRef.current) infoExitRef.current(show);
-      else show();
+      }, wait);
       requestDraw();
     }
     function paint(time: number) {
@@ -455,9 +471,9 @@ export function GraphView({
       ctx!.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx!.clearRect(0, 0, width, height);
       const active = selected >= 0 ? selected : indices.get(propsRef.current.activePath) ?? -1;
-      if (active !== focusedNode) {
-        focusedNode = active;
-        focusedEdges = layout.edges.filter(({ from, to }) => from === active || to === active);
+      if (selected !== focusedNode) {
+        focusedNode = selected;
+        focusedEdges = selected < 0 ? [] : layout.edges.filter(({ from, to }) => from === selected || to === selected);
       }
       function line(edge: (typeof layout.edges)[number], origin = edge.from, progress = 1) {
         const from = projected[origin];
@@ -473,14 +489,18 @@ export function GraphView({
       ctx!.beginPath();
       for (let i = 0; i < layout.edges.length; i += edgeStride) line(layout.edges[i]);
       ctx!.stroke();
-      ctx!.globalAlpha = selected >= 0 ? 0.5 : 0.65;
-      ctx!.strokeStyle = GRAPH_DEPTH_COLORS[8];
-      ctx!.beginPath();
-      for (const edge of focusedEdges) line(edge);
-      ctx!.stroke();
-      const hoverProgress = hover < 0 || motionPreference.matches ? 1 : clamp((time - hoverStarted) / HOVER_EDGE_MS, 0, 1);
+      const selection = graphSelectionReveal(time - selectedStarted, motionPreference.matches);
+      const selectedAnimating = selected >= 0 && focusedEdges.length > 0 && !selection.showTooltip;
+      if (selected >= 0 && focusedEdges.length > 0) {
+        ctx!.globalAlpha = 0.65;
+        ctx!.strokeStyle = GRAPH_DEPTH_COLORS[8];
+        ctx!.beginPath();
+        for (const edge of focusedEdges) line(edge, selected, selection.edgeProgress);
+        ctx!.stroke();
+      }
+      const hoverProgress = hover < 0 || motionPreference.matches ? 1 : clamp((time - hoverStarted) / GRAPH_EDGE_REVEAL_MS, 0, 1);
       const hoverAnimating = hoverEdges.length > 0 && hoverProgress < 1;
-      if (hoverEdges.length > 0) {
+      if (hoverEdges.length > 0 && hover !== selected) {
         // 기존 선택 간선은 유지하고 hover한 점에서 이웃 쪽으로 강조를 덧그린다.
         const progress = 1 - (1 - hoverProgress) ** 3;
         ctx!.globalAlpha = 0.65;
@@ -590,7 +610,7 @@ export function GraphView({
         resize();
       }
       // 배치와 짧은 등장 효과가 끝나면 RAF 자체를 멈춘다.
-      if (focusing || hoverAnimating || labelsAnimating || (step < maxSteps && pointers.size === 0 && selected < 0)) requestDraw();
+      if (focusing || selectedAnimating || hoverAnimating || labelsAnimating || (step < maxSteps && pointers.size === 0 && (selected < 0 || propsRef.current.local))) requestDraw();
     }
 
     function localPoint(event: { clientX: number; clientY: number }): Point {
@@ -783,6 +803,7 @@ export function GraphView({
     canvas.addEventListener("keydown", keyDown);
     return () => {
       disposed = true;
+      if (infoDelay !== null) clearTimeout(infoDelay);
       pause();
       controlsRef.current = null;
       resizeObserver.disconnect();
