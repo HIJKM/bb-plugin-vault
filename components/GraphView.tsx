@@ -72,7 +72,6 @@ export function GraphView({
   const propsRef = useRef({ activePath, onOpen, local: variant === "local" });
   propsRef.current = { activePath, onOpen, local: variant === "local" };
   const helpId = useId();
-  const [simplified, setSimplified] = useState(false);
   const [info, setInfo] = useState<(GraphNode & { connections: number; color: string }) | null>(null);
 
   function positionInfo() {
@@ -256,7 +255,6 @@ export function GraphView({
     const maxSteps = Math.min(GRAPH_MAX_STEPS, coarse ? 80 : 120);
     const frameInterval = coarse ? 1000 / 30 : 1000 / 60;
     const edgeStride = Math.max(1, Math.ceil(layout.edges.length / edgeBudget));
-    setSimplified(edgeStride > 1);
     let camera = { ...DEFAULT_GRAPH_CAMERA };
     let focusIndex = -1;
     let focusFrom: Quaternion | null = null;
@@ -847,6 +845,25 @@ export function GraphView({
             <polyline ref={infoLeaderRef} pathLength={1} strokeDasharray={1} strokeDashoffset={1} fill="none" stroke={info.color} strokeOpacity={0.7} strokeWidth={1} strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         )}
+        {nodes.length > 0 && variant !== "local" ? (
+          <>
+            <div className="pointer-events-none absolute top-2 right-2 z-20 flex items-center gap-2 text-[11px] text-muted-foreground">
+              <div className="pointer-events-auto flex items-center">
+                <Button type="button" variant="ghost" size="icon" className="size-6" aria-label="확대" onClick={() => controlsRef.current?.zoom(1.2)}>+</Button>
+                <Button type="button" variant="ghost" size="icon" className="size-6" aria-label="축소" onClick={() => controlsRef.current?.zoom(1 / 1.2)}>−</Button>
+              </div>
+              <span>{nodes.length}개</span>
+              <span className="inline-flex items-center gap-1" aria-label="Far is pale blue, near is deep blue">
+                far
+                <span className="inline-block h-1.5 w-10 rounded-full" style={{ background: `linear-gradient(to right, ${GRAPH_DEPTH_COLORS.join(", ")})` }} />
+                near
+              </span>
+            </div>
+            <p id={helpId} className="pointer-events-none absolute inset-x-2 bottom-1.5 z-20 truncate text-[10px] leading-none text-muted-foreground/55">
+              드래그로 회전 · 휠로 확대 · 노트 탭으로 정보 · Shift+드래그로 이동 · 방향키로 회전 · +/−로 확대 · Home으로 초기화
+            </p>
+          </>
+        ) : null}
         {info !== null && (
           <div
             ref={infoRef}
@@ -877,26 +894,6 @@ export function GraphView({
           </div>
         )}
       </div>
-      {nodes.length > 0 && variant !== "local" && (
-        <div className="flex shrink-0 flex-wrap items-center gap-2 border-t border-border px-3 py-2">
-          <div className="min-w-0 flex-1 text-xs text-muted-foreground">
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-              <p>3D · {nodes.length}개 노트{simplified ? " · 일부 연결선 표시" : ""}</p>
-              <span className="inline-flex items-center gap-1" aria-label="거리 표시: 옅은 청색은 멀리, 진한 청색은 가까이">
-                멀리
-                <span className="inline-block h-1.5 w-12 rounded-full" style={{ background: `linear-gradient(to right, ${GRAPH_DEPTH_COLORS.join(", ")})` }} />
-                가까이
-              </span>
-            </div>
-            <p id={helpId} className="mt-1">드래그로 회전 · 두 손가락/휠로 확대 · 노트 탭으로 정보<span className="hidden sm:inline"> · Shift+드래그로 이동 · 방향키로 회전 · +/−로 확대·축소 · Home으로 초기화</span></p>
-          </div>
-          <div className="flex items-center gap-1">
-            <Button type="button" variant="ghost" size="icon" aria-label="축소" onClick={() => controlsRef.current?.zoom(1 / 1.2)}>−</Button>
-            <Button type="button" variant="ghost" size="icon" aria-label="확대" onClick={() => controlsRef.current?.zoom(1.2)}>+</Button>
-            <Button type="button" variant="ghost" size="sm" aria-label="시점 초기화" onClick={() => controlsRef.current?.reset()}>초기화</Button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

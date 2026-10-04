@@ -39,12 +39,14 @@ const LIST_WIDTH_MIN = 200;
 const LIST_WIDTH_MAX = 560;
 const LIST_WIDTH_STEP = 16;
 const LIST_COLLAPSED_KEY = "vault-list-collapsed";
-const GRAPH_PEEK_WIDTH_KEY = "vault-local-graph-width";
-const GRAPH_PEEK_WIDTH_DEFAULT = 224;
-const GRAPH_PEEK_WIDTH_MIN = 176;
-const GRAPH_PEEK_WIDTH_MAX = 560;
-const GRAPH_PEEK_WIDTH_STEP = 16;
-const GRAPH_PEEK_DOC_MIN = 160;
+const LIST_CARD_RIGHT = 16;
+const GRAPH_SPLIT_KEY = "vault-graph-split";
+const GRAPH_SPLIT_DEFAULT = 0.55;
+const GRAPH_SPLIT_MIN = 0.2;
+const GRAPH_SPLIT_MAX = 0.8;
+const GRAPH_SPLIT_STEP = 0.04;
+const LIST_CARD_MOTION =
+  "transition-[transform,opacity] duration-[420ms] ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none";
 
 function clampListWidth(width: number, max = LIST_WIDTH_MAX): number {
   const ceiling = Math.max(LIST_WIDTH_MIN, max);
@@ -69,24 +71,23 @@ function storeListWidth(width: number): void {
   }
 }
 
-function clampGraphPeekWidth(width: number, max = GRAPH_PEEK_WIDTH_MAX): number {
-  const ceiling = Math.max(GRAPH_PEEK_WIDTH_MIN, max);
-  return Math.min(ceiling, Math.max(GRAPH_PEEK_WIDTH_MIN, Math.round(width)));
+function clampGraphSplit(split: number): number {
+  return Math.min(GRAPH_SPLIT_MAX, Math.max(GRAPH_SPLIT_MIN, Math.round(split * 1000) / 1000));
 }
 
-function readStoredGraphPeekWidth(): number {
+function readStoredGraphSplit(): number {
   try {
-    const parsed = Number(localStorage.getItem(GRAPH_PEEK_WIDTH_KEY));
-    if (!Number.isFinite(parsed)) return GRAPH_PEEK_WIDTH_DEFAULT;
-    return clampGraphPeekWidth(parsed);
+    const parsed = Number(localStorage.getItem(GRAPH_SPLIT_KEY));
+    if (!Number.isFinite(parsed)) return GRAPH_SPLIT_DEFAULT;
+    return clampGraphSplit(parsed);
   } catch {
-    return GRAPH_PEEK_WIDTH_DEFAULT;
+    return GRAPH_SPLIT_DEFAULT;
   }
 }
 
-function storeGraphPeekWidth(width: number): void {
+function storeGraphSplit(split: number): void {
   try {
-    localStorage.setItem(GRAPH_PEEK_WIDTH_KEY, String(width));
+    localStorage.setItem(GRAPH_SPLIT_KEY, String(split));
   } catch {
     // ignore quota / private mode
   }
@@ -257,10 +258,10 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
   const route = decodeRoute(subPath);
   const [listWidth, setListWidth] = useState(readStoredListWidth);
   const [listCollapsed, setListCollapsed] = useState(readListCollapsed);
-  const [graphPeekWidth, setGraphPeekWidth] = useState(readStoredGraphPeekWidth);
+  const [graphSplit, setGraphSplit] = useState(readStoredGraphSplit);
   const [resizing, setResizing] = useState(false);
   const resizeDrag = useRef<{ startX: number; startWidth: number; max: number } | null>(null);
-  const graphResizeDrag = useRef<{ startX: number; startWidth: number; max: number } | null>(null);
+  const graphSplitDrag = useRef<{ startY: number; startSplit: number; height: number } | null>(null);
   const listScrollerRef = useRef<HTMLDivElement>(null);
 
   const applyListWidth = useCallback((width: number, max?: number) => {
@@ -270,10 +271,10 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
     return next;
   }, []);
 
-  const applyGraphPeekWidth = useCallback((width: number, max?: number) => {
-    const next = clampGraphPeekWidth(width, max);
-    setGraphPeekWidth(next);
-    storeGraphPeekWidth(next);
+  const applyGraphSplit = useCallback((split: number) => {
+    const next = clampGraphSplit(split);
+    setGraphSplit(next);
+    storeGraphSplit(next);
     return next;
   }, []);
 
@@ -286,9 +287,9 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
     if (event.button !== 0) return;
     event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
-    const sidebar = event.currentTarget.parentElement;
-    const panel = sidebar?.parentElement;
-    const startWidth = sidebar?.getBoundingClientRect().width ?? listWidth;
+    const card = event.currentTarget.parentElement;
+    const panel = card?.parentElement?.parentElement;
+    const startWidth = card?.getBoundingClientRect().width ?? listWidth;
     const max = panel ? panel.clientWidth - LIST_WIDTH_MIN : LIST_WIDTH_MAX;
     resizeDrag.current = { startX: event.clientX, startWidth, max };
     setResizing(true);
@@ -309,6 +310,47 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
     }
   }
 
+  function onGraphSplitPointerDown(event: PointerEvent<HTMLDivElement>) {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    const column = event.currentTarget.parentElement;
+    const height = column?.getBoundingClientRect().height ?? 0;
+    graphSplitDrag.current = { startY: event.clientY, startSplit: graphSplit, height };
+    setResizing(true);
+  }
+
+  function onGraphSplitPointerMove(event: PointerEvent<HTMLDivElement>) {
+    const drag = graphSplitDrag.current;
+    if (drag === null || drag.height <= 0) return;
+    applyGraphSplit(drag.startSplit + (event.clientY - drag.startY) / drag.height);
+  }
+
+  function onGraphSplitPointerUp(event: PointerEvent<HTMLDivElement>) {
+    if (graphSplitDrag.current === null) return;
+    graphSplitDrag.current = null;
+    setResizing(false);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  }
+
+  function onGraphSplitKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      applyGraphSplit(graphSplit - GRAPH_SPLIT_STEP);
+    } else if (event.key === "ArrowDown") {
+      event.preventDefault();
+      applyGraphSplit(graphSplit + GRAPH_SPLIT_STEP);
+    } else if (event.key === "Home") {
+      event.preventDefault();
+      applyGraphSplit(GRAPH_SPLIT_MIN);
+    } else if (event.key === "End") {
+      event.preventDefault();
+      applyGraphSplit(GRAPH_SPLIT_MAX);
+    }
+  }
+
   function onResizeKeyDown(event: KeyboardEvent<HTMLDivElement>) {
     if (event.key === "ArrowLeft") {
       event.preventDefault();
@@ -325,49 +367,6 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
     }
   }
 
-  function onGraphResizePointerDown(event: PointerEvent<HTMLDivElement>) {
-    if (event.button !== 0) return;
-    event.preventDefault();
-    event.currentTarget.setPointerCapture(event.pointerId);
-    const pane = event.currentTarget.parentElement;
-    const row = pane?.parentElement;
-    const startWidth = pane?.getBoundingClientRect().width ?? graphPeekWidth;
-    const max = row ? Math.max(GRAPH_PEEK_WIDTH_MIN, row.clientWidth - GRAPH_PEEK_DOC_MIN) : GRAPH_PEEK_WIDTH_MAX;
-    graphResizeDrag.current = { startX: event.clientX, startWidth, max };
-    setResizing(true);
-  }
-
-  function onGraphResizePointerMove(event: PointerEvent<HTMLDivElement>) {
-    const drag = graphResizeDrag.current;
-    if (drag === null) return;
-    applyGraphPeekWidth(drag.startWidth - (event.clientX - drag.startX), drag.max);
-  }
-
-  function onGraphResizePointerUp(event: PointerEvent<HTMLDivElement>) {
-    if (graphResizeDrag.current === null) return;
-    graphResizeDrag.current = null;
-    setResizing(false);
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    }
-  }
-
-  function onGraphResizeKeyDown(event: KeyboardEvent<HTMLDivElement>) {
-    if (event.key === "ArrowLeft") {
-      event.preventDefault();
-      applyGraphPeekWidth(graphPeekWidth + GRAPH_PEEK_WIDTH_STEP);
-    } else if (event.key === "ArrowRight") {
-      event.preventDefault();
-      applyGraphPeekWidth(graphPeekWidth - GRAPH_PEEK_WIDTH_STEP);
-    } else if (event.key === "Home") {
-      event.preventDefault();
-      applyGraphPeekWidth(GRAPH_PEEK_WIDTH_MIN);
-    } else if (event.key === "End") {
-      event.preventDefault();
-      applyGraphPeekWidth(GRAPH_PEEK_WIDTH_MAX);
-    }
-  }
-
   const [vaults, setVaults] = useState<Vault[]>(() => rememberedVaults());
   const [indexByVault, setIndexByVault] = useState<Record<string, VaultIndex>>(() => ({
     ...rememberedIndex,
@@ -381,7 +380,8 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
   const [previewBaseUrl, setPreviewBaseUrl] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<DocViewMode>("preview");
   const [graphOpen, setGraphOpen] = useState(false);
-  const [graphPeek, setGraphPeek] = useState(false);
+  const [graphPeek, setGraphPeek] = useState(true);
+  const [browseFolder, setBrowseFolder] = useState<string | null>(null);
   const [graph, setGraph] = useState<{ nodes: GraphNode[]; edges: GraphEdge[] } | null>(null);
   const [loadingGraph, setLoadingGraph] = useState(false);
 
@@ -399,7 +399,6 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
   useEffect(() => {
     setGraph(null);
     setGraphOpen(false);
-    setGraphPeek(false);
   }, [vaultId]);
 
   useEffect(() => {
@@ -422,11 +421,13 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
     };
   }, [graph, graphOpen, graphPeek, rpc, vaultId]);
   const viewingFile = activePath !== "" && isProbablyFile(activePath);
-  const listFolder = viewingFile
+  const openFilePath = viewingFile ? activePath : "";
+  const routeFolder = viewingFile
     ? activePath.includes("/")
       ? activePath.slice(0, activePath.lastIndexOf("/"))
       : ""
     : activePath;
+  const listFolder = browseFolder ?? routeFolder;
   const vaultIndex = vaultId === null ? undefined : indexByVault[vaultId];
   const index = vaultIndex?.entries ?? [];
   const rawArchive = vaultIndex?.rawArchive ?? {};
@@ -450,6 +451,10 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
     [index, listFolder, query],
   );
   const showList = !compact || !viewingFile;
+
+  useEffect(() => {
+    setBrowseFolder(null);
+  }, [vaultId, openFilePath]);
   const folderScrollKey = listScrollKey(vaultId, listFolder);
 
   useLayoutEffect(() => {
@@ -628,7 +633,7 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
   const activeVault = vaults.find((vault) => vault.id === vaultId);
   const listPane = (
     <div
-      className={cn("flex min-h-0 w-full flex-col", compact ? "" : "h-full border-r border-border")}
+      className="flex h-full min-h-0 w-full flex-col"
       onKeyDown={(event) => {
         if (
           (event.ctrlKey || event.metaKey) &&
@@ -680,12 +685,15 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
         rootLabel={activeVault?.name ?? "Vault"}
         onNavigate={(path) => {
           if (vaultId === null) return;
+          if (viewingFile) {
+            setBrowseFolder(path);
+            return;
+          }
           goTo(vaultId, path);
         }}
         query={query}
         onQueryChange={setQuery}
         filterFocusTick={filterFocusTick}
-        onOpenGraph={() => setGraphOpen(true)}
       />
       <div
         ref={listScrollerRef}
@@ -716,6 +724,11 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
                   )}
                   onClick={() => {
                     if (vaultId === null) return;
+                    if (item.kind === "directory") {
+                      if (viewingFile) setBrowseFolder(item.path);
+                      else goTo(vaultId, item.path);
+                      return;
+                    }
                     goTo(vaultId, item.path);
                   }}
                 >
@@ -780,26 +793,14 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
         <p className="p-4 text-sm text-muted-foreground">이 문서를 찾지 못했습니다.</p>
       ) : (
         <>
-          <div className="border-b border-border px-4 py-3">
+          <div
+            className={cn(
+              "border-b border-border py-3 pr-4",
+              !compact && listCollapsed ? "pl-12" : "pl-4",
+            )}
+          >
             <div className="flex items-center gap-2">
               <h1 className="min-w-0 flex-1 truncate text-base font-medium">{fileLabel(doc.name)}</h1>
-              {!compact ? (
-                <button
-                  type="button"
-                  aria-label="로컬 그래프"
-                  aria-pressed={graphPeek}
-                  data-testid="vault-doc-graph"
-                  className={cn(
-                    "inline-flex size-7 shrink-0 items-center justify-center rounded-md",
-                    graphPeek
-                      ? "bg-muted text-foreground"
-                      : "text-muted-foreground hover:text-foreground",
-                  )}
-                  onClick={() => setGraphPeek((open) => !open)}
-                >
-                  <Icon name="GitBranch" className="size-3.5" />
-                </button>
-              ) : null}
               {doc.kind === "markdown" || doc.kind === "html" ? (
                 <DocViewToggle mode={viewMode} onChange={setViewMode} />
               ) : null}
@@ -845,49 +846,6 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
               {!(doc.kind === "html" && viewMode === "preview") ? <DocumentEndSpace /> : null}
             </div>
             )}
-            {graphPeek && !compact ? (
-              <div
-                data-testid="vault-graph-peek"
-                aria-label="로컬 그래프"
-                className="relative flex min-h-0 shrink-0 flex-col border-l border-border"
-                style={{ width: graphPeekWidth, maxWidth: `calc(100% - ${GRAPH_PEEK_DOC_MIN}px)` }}
-              >
-                <div
-                  role="separator"
-                  aria-orientation="vertical"
-                  aria-label="로컬 그래프 너비"
-                  aria-valuemin={GRAPH_PEEK_WIDTH_MIN}
-                  aria-valuemax={GRAPH_PEEK_WIDTH_MAX}
-                  aria-valuenow={graphPeekWidth}
-                  tabIndex={0}
-                  className={cn(
-                    "absolute inset-y-0 left-0 z-10 w-3 -translate-x-1/2 cursor-col-resize touch-none",
-                    "after:absolute after:inset-y-0 after:left-1/2 after:w-px after:-translate-x-1/2",
-                    resizing ? "after:bg-primary" : "hover:after:bg-border",
-                  )}
-                  onPointerDown={onGraphResizePointerDown}
-                  onPointerMove={onGraphResizePointerMove}
-                  onPointerUp={onGraphResizePointerUp}
-                  onPointerCancel={onGraphResizePointerUp}
-                  onDoubleClick={() => applyGraphPeekWidth(GRAPH_PEEK_WIDTH_DEFAULT)}
-                  onKeyDown={onGraphResizeKeyDown}
-                />
-                {loadingGraph && graph === null ? (
-                  <p className="p-4 text-sm text-muted-foreground">그래프를 그리는 중…</p>
-                ) : (
-                  <GraphView
-                    variant="local"
-                    nodes={graph?.nodes ?? []}
-                    edges={graph?.edges ?? []}
-                    activePath={activePath}
-                    onOpen={(path) => {
-                      if (vaultId === null) return;
-                      goTo(vaultId, path);
-                    }}
-                  />
-                )}
-              </div>
-            ) : null}
           </div>
         </>
       )}
@@ -931,50 +889,138 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
     <div
       data-no-sidebar-swipe=""
       className={cn(
-        "flex h-full min-h-0 bg-background text-foreground",
+        "relative flex h-full min-h-0 bg-background text-foreground",
         resizing ? "select-none" : "",
       )}
     >
       {compact ? (
         showList ? listPane : null
-      ) : listCollapsed ? (
-        <div className="flex h-full shrink-0 flex-col border-r border-border">
-          <button
-            type="button"
-            aria-label="파일 목록 펼치기"
-            data-testid="vault-list-expand"
-            className="m-1 inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-state-hover hover:text-foreground"
-            onClick={() => collapseList(false)}
-          >
-            <Icon name="ChevronRight" className="size-3.5" />
-          </button>
-        </div>
       ) : showList ? (
-        <div className="relative flex min-h-0 max-w-[70%] shrink-0" style={{ width: listWidth }}>
-          {listPane}
+        <div
+          className={cn(
+            "relative h-full max-w-[70%] shrink-0 overflow-visible",
+            resizing
+              ? ""
+              : "transition-[width] duration-[420ms] ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none",
+          )}
+          style={{ width: listCollapsed ? 0 : listWidth + LIST_CARD_RIGHT }}
+        >
           <div
-            role="separator"
-            aria-orientation="vertical"
-            aria-label="사이드바 너비"
-            aria-valuemin={LIST_WIDTH_MIN}
-            aria-valuemax={LIST_WIDTH_MAX}
-            aria-valuenow={listWidth}
-            tabIndex={0}
+            data-testid="vault-list-card"
+            aria-hidden={listCollapsed}
+            inert={listCollapsed}
             className={cn(
-              "absolute inset-y-0 right-0 z-10 w-3 translate-x-1/2 cursor-col-resize touch-none",
-              "after:absolute after:inset-y-0 after:left-1/2 after:w-px after:-translate-x-1/2",
-              resizing ? "after:bg-primary" : "hover:after:bg-border",
+              "absolute inset-y-0 left-0 flex origin-center flex-col bg-background",
+              LIST_CARD_MOTION,
+              listCollapsed ? "pointer-events-none scale-[0.92] opacity-0" : "scale-100 opacity-100",
             )}
-            onPointerDown={onResizePointerDown}
-            onPointerMove={onResizePointerMove}
-            onPointerUp={onResizePointerUp}
-            onPointerCancel={onResizePointerUp}
-            onDoubleClick={() => applyListWidth(LIST_WIDTH_DEFAULT)}
-            onKeyDown={onResizeKeyDown}
-          />
+            style={{ width: listWidth }}
+          >
+            <button
+              type="button"
+              aria-pressed={graphPeek}
+              data-testid="vault-column-graph"
+              className={cn(
+                "flex h-8 shrink-0 items-center gap-2 border-b border-border px-3 text-xs",
+                graphPeek ? "text-foreground" : "text-muted-foreground hover:text-foreground",
+              )}
+              onClick={() => setGraphPeek((open) => !open)}
+            >
+              <Icon name="GitBranch" className="size-3.5" />
+              그래프
+            </button>
+            <div className="flex min-h-0 flex-1 flex-col">
+              {graphPeek ? (
+                <div
+                  className="flex min-h-0 flex-col"
+                  style={{ flexGrow: graphSplit, flexBasis: 0 }}
+                  aria-label="그래프"
+                >
+                  {loadingGraph && graph === null ? (
+                    <p className="p-4 text-sm text-muted-foreground">그래프를 그리는 중…</p>
+                  ) : (
+                    <GraphView
+                      nodes={graph?.nodes ?? []}
+                      edges={graph?.edges ?? []}
+                      activePath={activePath}
+                      onOpen={(path) => {
+                        if (vaultId === null) return;
+                        goTo(vaultId, path);
+                      }}
+                    />
+                  )}
+                </div>
+              ) : null}
+              {graphPeek ? (
+                <div
+                  role="separator"
+                  aria-orientation="horizontal"
+                  aria-label="그래프 높이"
+                  aria-valuemin={Math.round(GRAPH_SPLIT_MIN * 100)}
+                  aria-valuemax={Math.round(GRAPH_SPLIT_MAX * 100)}
+                  aria-valuenow={Math.round(graphSplit * 100)}
+                  tabIndex={0}
+                  className="relative z-10 flex h-3 shrink-0 cursor-row-resize touch-none items-center justify-center"
+                  onPointerDown={onGraphSplitPointerDown}
+                  onPointerMove={onGraphSplitPointerMove}
+                  onPointerUp={onGraphSplitPointerUp}
+                  onPointerCancel={onGraphSplitPointerUp}
+                  onDoubleClick={() => applyGraphSplit(GRAPH_SPLIT_DEFAULT)}
+                  onKeyDown={onGraphSplitKeyDown}
+                >
+                  <span
+                    className={cn(
+                      "h-1 w-4 rounded-full",
+                      resizing ? "bg-primary" : "bg-foreground/35",
+                    )}
+                  />
+                </div>
+              ) : null}
+              <div
+                className="flex min-h-0 flex-col"
+                style={{ flexGrow: graphPeek ? 1 - graphSplit : 1, flexBasis: 0 }}
+              >
+                {listPane}
+              </div>
+            </div>
+            <div
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="사이드바 너비"
+              aria-valuemin={LIST_WIDTH_MIN}
+              aria-valuemax={LIST_WIDTH_MAX}
+              aria-valuenow={listWidth}
+              tabIndex={listCollapsed ? -1 : 0}
+              className="absolute top-1/2 left-full z-10 ml-1 flex h-8 w-3 -translate-y-1/2 cursor-col-resize touch-none items-center justify-center"
+              onPointerDown={onResizePointerDown}
+              onPointerMove={onResizePointerMove}
+              onPointerUp={onResizePointerUp}
+              onPointerCancel={onResizePointerUp}
+              onDoubleClick={() => applyListWidth(LIST_WIDTH_DEFAULT)}
+              onKeyDown={onResizeKeyDown}
+            >
+              <span
+                className={cn(
+                  "h-4 w-1 rounded-full",
+                  resizing ? "bg-primary" : "bg-foreground/35",
+                )}
+              />
+            </div>
+          </div>
         </div>
       ) : null}
       {showDetail ? detailPane : null}
+      {!compact && listCollapsed ? (
+        <button
+          type="button"
+          aria-label="파일 목록 펼치기"
+          data-testid="vault-list-expand"
+          className="absolute left-2 top-2 z-20 inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-state-hover hover:text-foreground"
+          onClick={() => collapseList(false)}
+        >
+          <Icon name="ChevronRight" className="size-3.5" />
+        </button>
+      ) : null}
     </div>
   );
 }
