@@ -38,6 +38,9 @@ const SELECTED_NODE_COLOR = "#8b5cf6";
 const INFO_TRANSITION_MS = 180;
 const FOCUS_MS = 560;
 const MAX_GRAPH_ZOOM = 8;
+const MIN_GRAPH_ZOOM = 0.35;
+const ZOOM_MS = 220;
+const SPIN_DECAY_MS = 140;
 const GRAPH_HELP =
   "드래그로 회전 · 휠로 확대 · 노트 탭으로 정보 · Shift+드래그로 이동 · 방향키로 회전 · +/−로 확대 · Home으로 초기화";
 type Point = { x: number; y: number };
@@ -111,8 +114,8 @@ export function GraphView({
   const infoExitingRef = useRef(false);
   const infoFocusRef = useRef(false);
   const controlsRef = useRef<Controls | null>(null);
-  const propsRef = useRef({ activePath, onOpen, local: variant === "local" });
-  propsRef.current = { activePath, onOpen, local: variant === "local" };
+  const propsRef = useRef({ activePath, onOpen, local: variant === "local", mini: onFullscreen !== undefined });
+  propsRef.current = { activePath, onOpen, local: variant === "local", mini: onFullscreen !== undefined };
   const helpId = useId();
   const [info, setInfo] = useState<(GraphNode & { connections: number; color: string }) | null>(null);
 
@@ -178,10 +181,15 @@ export function GraphView({
       const finish = () => {
         if (disposed || exiting) return;
         panel.style.opacity = "1";
-        panel.style.pointerEvents = "auto";
-        panel.inert = false;
+        if (panel.hasAttribute("data-passive")) {
+          panel.style.pointerEvents = "none";
+          panel.inert = true;
+        } else {
+          panel.style.pointerEvents = "auto";
+          panel.inert = false;
+          if (infoFocusRef.current) panel.focus({ preventScroll: true });
+        }
         if (line) line.style.opacity = "1";
-        if (infoFocusRef.current) panel.focus({ preventScroll: true });
         panelAnimation?.cancel();
         lineAnimation?.cancel();
       };
@@ -328,6 +336,17 @@ export function GraphView({
     let focusedEdges: typeof layout.edges = [];
     const pointers = new Map<number, Point>();
     let drag: { id: number; start: Point; last: Point; moved: boolean; pan: boolean; hit: number } | null = null;
+    let spin: { vx: number; vy: number; pan: boolean } | null = null;
+    let lastPointerTime = 0;
+    let zoomAnim: {
+      from: number;
+      to: number;
+      fromX: number;
+      fromY: number;
+      toX: number;
+      toY: number;
+      started: number;
+    } | null = null;
     let pinch: { distance: number; center: Point; scale: number; x: number; y: number } | null = null;
     let palette = { edge: "#888", ink: "#111", surface: "#fff" };
 
@@ -485,8 +504,12 @@ export function GraphView({
         requestDraw();
         return;
       }
+      const elapsed = lastFrame < 0 ? 16 : time - lastFrame;
       lastFrame = time;
       const focusing = applyFocus(time);
+      const zooming = applyZoomAnim(time);
+      const coasting = applySpin(elapsed);
+      const gliding = pointers.size > 0 || coasting;
       const started = performance.now();
       // 조작 중에는 배치를 고정해 손가락 아래의 노트가 움직이지 않게 한다.
       if (step < maxSteps && pointers.size === 0 && (!pinLayout || propsRef.current.local)) {
@@ -632,10 +655,12 @@ export function GraphView({
         ctx!.fillText(text.title, rect.x + 6, rect.y + rect.height / 2);
         ctx!.restore();
       }
-      // 유지 중인 이름은 재시작하지 않고, 사라졌다 다시 나타날 때만 선을 그린다.
-      for (const index of closest) label(index);
-      for (const index of labelStarts.keys()) {
-        if (!shownLabels.has(index)) labelStarts.delete(index);
+      // 드래그·관성 중에는 이름표를 생략해 프레임이 밀리지 않게 한다.
+      if (!gliding) {
+        for (const index of closest) label(index);
+        for (const index of labelStarts.keys()) {
+          if (!shownLabels.has(index)) labelStarts.delete(index);
+        }
       }
       if (performance.now() - started > 20) slowFrames++;
       else slowFrames = Math.max(0, slowFrames - 1);
@@ -644,7 +669,7 @@ export function GraphView({
         resize();
       }
       // 배치와 짧은 등장 효과가 끝나면 RAF 자체를 멈춘다.
-      if (focusing || selectedAnimating || hoverAnimating || labelsAnimating || (step < maxSteps && pointers.size === 0 && (selected < 0 || propsRef.current.local))) requestDraw();
+      if (focusing || zooming || coasting || selectedAnimating || hoverAnimating || labelsAnimating || (step < maxSteps && pointers.size === 0 && (!pinLayout || propsRef.current.local))) requestDraw();
     }
 
     function localPoint(event: { clientX: number; clientY: number }): Point {
@@ -660,20 +685,74 @@ export function GraphView({
       }
       return -1;
     }
-    function zoom(factor: number, point: Point = { x: width / 2, y: height / 2 }) {
-      interruptFocus();
-      infoFocusRef.current = false;
-      setHover(-1);
-      const next = clamp(camera.scale * factor, 0.35, MAX_GRAPH_ZOOM);
-      const ratio = next / camera.scale;
+    function placeZoom(scale: number, point: Point) {
+      const next = clamp(scale, MIN_GRAPH_ZOOM, MAX_GRAPH_ZOOM);
+      const ratio = camera.scale === 0 ? 1 : next / camera.scale;
       camera.x = point.x - width / 2 - (point.x - width / 2 - camera.x) * ratio;
       camera.y = point.y - height / 2 - (point.y - height / 2 - camera.y) * ratio;
       camera.scale = next;
+    }
+    function zoom(factor: number, point: Point = { x: width / 2, y: height / 2 }, animate = false) {
+      interruptFocus();
+      infoFocusRef.current = false;
+      spin = null;
+      setHover(-1);
+      const base = zoomAnim?.to ?? camera.scale;
+      const target = clamp(base * factor, MIN_GRAPH_ZOOM, MAX_GRAPH_ZOOM);
+      if (!animate || motionPreference.matches || target === camera.scale) {
+        zoomAnim = null;
+        placeZoom(target, point);
+        requestDraw();
+        return;
+      }
+      const ratio = camera.scale === 0 ? 1 : target / camera.scale;
+      zoomAnim = {
+        from: camera.scale,
+        to: target,
+        fromX: camera.x,
+        fromY: camera.y,
+        toX: point.x - width / 2 - (point.x - width / 2 - camera.x) * ratio,
+        toY: point.y - height / 2 - (point.y - height / 2 - camera.y) * ratio,
+        started: performance.now(),
+      };
       requestDraw();
+    }
+    function applyZoomAnim(time: number) {
+      if (zoomAnim === null) return false;
+      const t = clamp((time - zoomAnim.started) / ZOOM_MS, 0, 1);
+      const eased = 1 - (1 - t) ** 3;
+      camera.scale = zoomAnim.from + (zoomAnim.to - zoomAnim.from) * eased;
+      camera.x = zoomAnim.fromX + (zoomAnim.toX - zoomAnim.fromX) * eased;
+      camera.y = zoomAnim.fromY + (zoomAnim.toY - zoomAnim.fromY) * eased;
+      if (t >= 1) {
+        zoomAnim = null;
+        return false;
+      }
+      return true;
+    }
+    function applySpin(elapsed: number) {
+      if (spin === null || pointers.size > 0) return false;
+      const dt = Math.min(32, Math.max(0, elapsed));
+      if (spin.pan) {
+        camera.x += spin.vx * dt;
+        camera.y += spin.vy * dt;
+      } else {
+        rotateGraphCamera(camera, spin.vx * dt, spin.vy * dt);
+      }
+      const decay = Math.exp(-dt / SPIN_DECAY_MS);
+      spin.vx *= decay;
+      spin.vy *= decay;
+      if (Math.hypot(spin.vx, spin.vy) < 0.02) {
+        spin = null;
+        return false;
+      }
+      return true;
     }
     function reset() {
       interruptFocus();
       infoFocusRef.current = false;
+      zoomAnim = null;
+      spin = null;
       camera = { ...DEFAULT_GRAPH_CAMERA };
       setHover(-1);
       requestDraw();
@@ -689,6 +768,9 @@ export function GraphView({
       infoFocusRef.current = false;
       canvas!.focus({ preventScroll: true });
       canvas!.setPointerCapture(event.pointerId);
+      spin = null;
+      zoomAnim = null;
+      lastPointerTime = performance.now();
       const point = localPoint(event);
       pointers.set(event.pointerId, point);
       if (pointers.size >= 2) {
@@ -724,8 +806,19 @@ export function GraphView({
         const dx = point.x - drag.last.x;
         const dy = point.y - drag.last.y;
         interruptFocus();
+        zoomAnim = null;
         if (drag.pan) { camera.x += dx; camera.y += dy; }
         else rotateGraphCamera(camera, dx, dy);
+        const now = performance.now();
+        const stepMs = Math.max(8, now - lastPointerTime);
+        lastPointerTime = now;
+        const vx = dx / stepMs;
+        const vy = dy / stepMs;
+        spin = {
+          vx: spin === null ? vx : spin.vx * 0.45 + vx * 0.55,
+          vy: spin === null ? vy : spin.vy * 0.45 + vy * 0.55,
+          pan: drag.pan,
+        };
         setHover(-1);
         requestDraw();
       }
@@ -737,8 +830,10 @@ export function GraphView({
       const point = localPoint(event);
       const clicked = event.type === "pointerup" && drag?.id === event.pointerId && !drag.moved
         && Math.hypot(point.x - drag.start.x, point.y - drag.start.y) <= 5 ? drag.hit : null;
+      const coast = drag?.moved === true && performance.now() - lastPointerTime < 80;
       pointers.delete(event.pointerId);
       drag = null;
+      if (!coast) spin = null;
       pinch = null;
       if (pointers.size === 2) {
         pinch = { ...pinchPoints(), scale: camera.scale, x: camera.x, y: camera.y };
@@ -754,6 +849,7 @@ export function GraphView({
           if (clicked >= 0) propsRef.current.onOpen(nodes[clicked].path);
         } else {
           selectInfo(clicked);
+          if (propsRef.current.mini && clicked >= 0) propsRef.current.onOpen(nodes[clicked].path);
         }
       }
     }
@@ -772,13 +868,14 @@ export function GraphView({
         case "ArrowRight": rotateGraphCamera(camera, 15, 0); break;
         case "ArrowUp": rotateGraphCamera(camera, 0, -15); break;
         case "ArrowDown": rotateGraphCamera(camera, 0, 15); break;
-        case "+": case "=": zoom(1.2); break;
-        case "-": zoom(1 / 1.2); break;
+        case "+": case "=": zoom(1.2, { x: width / 2, y: height / 2 }, true); break;
+        case "-": zoom(1 / 1.2, { x: width / 2, y: height / 2 }, true); break;
         case "Home": reset(); break;
         default: return;
       }
       event.preventDefault();
       event.stopPropagation();
+      spin = null;
       interruptFocus();
       infoFocusRef.current = false;
       setHover(-1);
@@ -800,7 +897,10 @@ export function GraphView({
     }
 
     controlsRef.current = {
-      redraw: requestDraw, zoom, reset, focusPath,
+      redraw: requestDraw,
+      zoom: (factor) => zoom(factor, { x: width / 2, y: height / 2 }, true),
+      reset,
+      focusPath,
       dismissInfo: () => dismissInfo(true),
       openFile: () => {
         if (selected < 0) return;
@@ -916,33 +1016,45 @@ export function GraphView({
           </>
         ) : null}
         {info !== null && (
-          <div
-            ref={infoRef}
-            role="dialog"
-            aria-label="노트 정보"
-            tabIndex={-1}
-            style={{ width: "min(15rem, calc(100% - 16px))", borderColor: `${info.color}73`, opacity: 0, pointerEvents: "none" }}
-            className="absolute z-10 overflow-auto rounded border bg-popover p-2 text-popover-foreground shadow-sm outline-none"
-            onPointerDown={(event) => event.stopPropagation()}
-            onKeyDown={(event) => {
-              if (event.key !== "Escape") return;
-              event.preventDefault();
-              event.stopPropagation();
-              controlsRef.current?.dismissInfo();
-            }}
-          >
-            <div className="flex items-start gap-2">
-              <p className="min-w-0 flex-1 break-words text-xs font-medium">{info.name}</p>
-              <Button type="button" variant="ghost" size="icon" className="size-6 shrink-0" aria-label="노트 정보 닫기" onClick={() => controlsRef.current?.dismissInfo()}>×</Button>
+          onFullscreen ? (
+            <div
+              ref={infoRef}
+              data-passive=""
+              aria-label={info.name}
+              style={{ width: "max-content", maxWidth: "min(180px, calc(100% - 16px))", opacity: 0, pointerEvents: "none" }}
+              className="absolute z-10 flex h-[22px] items-center overflow-hidden text-ellipsis whitespace-nowrap rounded border border-foreground/40 bg-popover px-1.5 text-xs text-popover-foreground"
+            >
+              {info.name}
             </div>
-            <p className="mt-1 break-all text-[11px] text-muted-foreground">{info.path}</p>
-            <div className="mt-2 flex items-center justify-between gap-2">
-              <p className="text-[11px] text-muted-foreground">연결된 노트 {info.connections}개</p>
-              {variant === "local" ? null : (
-                <Button type="button" variant="ghost" size="sm" className="h-7 shrink-0 px-2 text-xs" style={{ color: info.color }} onClick={() => controlsRef.current?.openFile()}>파일 열기</Button>
-              )}
+          ) : (
+            <div
+              ref={infoRef}
+              role="dialog"
+              aria-label="노트 정보"
+              tabIndex={-1}
+              style={{ width: "min(15rem, calc(100% - 16px))", maxWidth: "calc(100% - 16px)", borderColor: `${info.color}73`, opacity: 0, pointerEvents: "none" }}
+              className="absolute z-10 overflow-auto rounded border bg-popover p-2 text-popover-foreground shadow-sm outline-none"
+              onPointerDown={(event) => event.stopPropagation()}
+              onKeyDown={(event) => {
+                if (event.key !== "Escape") return;
+                event.preventDefault();
+                event.stopPropagation();
+                controlsRef.current?.dismissInfo();
+              }}
+            >
+              <div className="flex items-start gap-2">
+                <p className="min-w-0 flex-1 break-words text-xs font-medium">{info.name}</p>
+                <Button type="button" variant="ghost" size="icon" className="size-6 shrink-0" aria-label="노트 정보 닫기" onClick={() => controlsRef.current?.dismissInfo()}>×</Button>
+              </div>
+              <p className="mt-1 break-all text-[11px] text-muted-foreground">{info.path}</p>
+              <div className="mt-2 flex items-center justify-between gap-2">
+                <p className="text-[11px] text-muted-foreground">연결된 노트 {info.connections}개</p>
+                {variant === "local" ? null : (
+                  <Button type="button" variant="ghost" size="sm" className="h-7 shrink-0 px-2 text-xs" style={{ color: info.color }} onClick={() => controlsRef.current?.openFile()}>파일 열기</Button>
+                )}
+              </div>
             </div>
-          </div>
+          )
         )}
       </div>
     </div>

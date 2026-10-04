@@ -44,8 +44,8 @@ const GRAPH_SPLIT_DEFAULT = 0.55;
 const GRAPH_SPLIT_MIN = 0.2;
 const GRAPH_SPLIT_MAX = 0.8;
 const GRAPH_SPLIT_STEP = 0.04;
-const LIST_CARD_MOTION =
-  "transition-[transform,opacity] duration-[420ms] ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none";
+const PANEL_WIDTH_MOTION =
+  "transition-[width] duration-[420ms] ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none";
 
 function clampListWidth(width: number, max = LIST_WIDTH_MAX): number {
   const ceiling = Math.max(LIST_WIDTH_MIN, max);
@@ -209,7 +209,7 @@ function matchesDocQuery(entry: DocEntry, needle: string): boolean {
 
 const TREE_INDENT = 16;
 const TREE_BASE = 8;
-const TREE_GUIDE_X = 8;
+const TREE_GUIDE_X = 7;
 
 type TreeRow = {
   entry: DocEntry;
@@ -494,23 +494,6 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
     });
   }
 
-  function revealFolder(path: string) {
-    setExpandedFolders((current) => {
-      const next = new Set(current);
-      let cursor = path;
-      while (cursor !== "") {
-        next.add(cursor);
-        const slash = cursor.lastIndexOf("/");
-        cursor = slash === -1 ? "" : cursor.slice(0, slash);
-      }
-      return next;
-    });
-    requestAnimationFrame(() => {
-      listScrollerRef.current
-        ?.querySelector(`[data-vault-path="${CSS.escape(path)}"]`)
-        ?.scrollIntoView({ block: "nearest" });
-    });
-  }
   const folderScrollKey = listScrollKey(vaultId, "");
 
   useLayoutEffect(() => {
@@ -710,20 +693,16 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
       }}
     >
       <Toolbar
-        folder={listFolder}
         rootLabel={activeVault?.name ?? "Vault"}
-        onNavigate={(path) => {
-          revealFolder(path);
-        }}
         query={query}
         onQueryChange={setQuery}
         filterFocusTick={filterFocusTick}
         graphOpen={graphPeek}
         onToggleGraph={compact ? undefined : () => setGraphPeek((open) => !open)}
-        onToggleList={compact ? undefined : () => collapseList(true)}
         vaults={vaults}
         vaultId={vaultId}
         onSelectVault={(id) => goTo(id, "")}
+        className={compact ? undefined : "pr-9"}
       />
       <div
         ref={listScrollerRef}
@@ -757,7 +736,7 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
                   title={item.path}
                   style={{ paddingLeft: TREE_BASE + row.depth * TREE_INDENT }}
                   className={cn(
-                    "relative flex h-7 w-full min-w-0 items-center gap-1.5 pr-2 text-left text-sm",
+                    "relative flex h-6 w-full min-w-0 items-center gap-1.5 pr-2 text-left text-[13px]",
                     selected ? "bg-accent text-accent-foreground" : "hover:bg-state-hover",
                   )}
                   onClick={() => {
@@ -783,7 +762,7 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
                     name={
                       item.kind === "directory" ? "Folder" : isImageFileName(item.path) ? "File" : "FileText"
                     }
-                    className="size-4 shrink-0"
+                    className="size-3.5 shrink-0"
                   />
                   <span className="min-w-0 flex-1 truncate">
                     {item.kind === "file" ? fileLabel(item.name) : item.name}
@@ -842,17 +821,20 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
         <>
           <div
             className={cn(
-              "flex h-8 shrink-0 items-center gap-2 border-b border-border pr-2",
+              "flex h-9 shrink-0 items-center gap-2 border-b border-border pr-2 transition-[padding] duration-[420ms] ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none",
               !compact && listCollapsed ? "pl-12" : "pl-3",
             )}
           >
             <h1 className="min-w-0 flex-1 truncate text-sm font-medium">{fileLabel(doc.name)}</h1>
             {doc.kind === "markdown" && viewMode === "preview" && markdown.fields.length > 0 ? (
-              <Button
+              <button
                 type="button"
-                variant="ghost"
-                size="sm"
-                className="h-7 gap-1 px-1.5 text-xs"
+                className={cn(
+                  "inline-flex size-8 shrink-0 items-center justify-center rounded-md",
+                  propsOpen
+                    ? "bg-state-active text-foreground"
+                    : "text-muted-foreground hover:bg-state-hover hover:text-foreground",
+                )}
                 aria-pressed={propsOpen}
                 aria-label="속성"
                 onClick={() => {
@@ -861,8 +843,8 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
                   storeFrontmatterOpen(next);
                 }}
               >
-                속성
-              </Button>
+                <Icon name="SlidersHorizontal" className="size-3.5" />
+              </button>
             ) : null}
             {doc.kind === "markdown" || doc.kind === "html" ? (
               <DocViewToggle mode={viewMode} onChange={setViewMode} />
@@ -898,16 +880,23 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
               {!(doc.kind === "html" && viewMode === "preview") ? <DocumentEndSpace /> : null}
             </div>
             )}
-            {propsOpen && doc.kind === "markdown" && viewMode === "preview" && markdown.fields.length > 0 ? (
-              <aside className="w-56 shrink-0 overflow-y-auto border-l border-border">
-                <FrontmatterPanel
-                  fields={markdown.fields}
-                  docPath={doc.path}
-                  index={index}
-                  vaultId={vaultId}
-                  rawByHash={rawArchive}
-                  onOpen={goTo}
-                />
+            {doc.kind === "markdown" && viewMode === "preview" && markdown.fields.length > 0 ? (
+              <aside
+                className={cn("relative h-full shrink-0 overflow-hidden", PANEL_WIDTH_MOTION)}
+                style={{ width: propsOpen ? "14rem" : 0 }}
+                aria-hidden={!propsOpen}
+                inert={!propsOpen}
+              >
+                <div className="absolute inset-y-0 right-0 w-56 overflow-y-auto border-l border-border">
+                  <FrontmatterPanel
+                    fields={markdown.fields}
+                    docPath={doc.path}
+                    index={index}
+                    vaultId={vaultId}
+                    rawByHash={rawArchive}
+                    onOpen={goTo}
+                  />
+                </div>
               </aside>
             ) : null}
           </div>
@@ -962,10 +951,8 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
       ) : showList ? (
         <div
           className={cn(
-            "relative h-full max-w-[70%] shrink-0 overflow-visible",
-            resizing
-              ? ""
-              : "transition-[width] duration-[420ms] ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none",
+            "relative h-full max-w-[70%] shrink-0 overflow-hidden",
+            resizing ? "" : PANEL_WIDTH_MOTION,
           )}
           style={{ width: listCollapsed ? 0 : listWidth }}
         >
@@ -973,11 +960,7 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
             data-testid="vault-list-card"
             aria-hidden={listCollapsed}
             inert={listCollapsed}
-            className={cn(
-              "absolute inset-y-0 left-0 flex origin-center flex-col bg-background",
-              LIST_CARD_MOTION,
-              listCollapsed ? "pointer-events-none scale-[0.92] opacity-0" : "scale-100 opacity-100",
-            )}
+            className="absolute inset-y-0 left-0 flex flex-col bg-background"
             style={{ width: listWidth }}
           >
             <div className="flex min-h-0 flex-1 flex-col">
@@ -1054,15 +1037,22 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
         </div>
       ) : null}
       {showDetail ? detailPane : null}
-      {!compact && listCollapsed ? (
+      {!compact ? (
         <button
           type="button"
-          aria-label="파일 목록 펼치기"
-          data-testid="vault-list-expand"
-          className="absolute top-0.5 left-2 z-20 inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-state-hover hover:text-foreground"
-          onClick={() => collapseList(false)}
+          aria-label={listCollapsed ? "파일 목록 펼치기" : "파일 목록 접기"}
+          aria-pressed={!listCollapsed}
+          data-testid="vault-list-collapse"
+          className={cn(
+            "absolute top-1 z-30 inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-state-hover hover:text-foreground",
+            resizing
+              ? ""
+              : "transition-[left] duration-[420ms] ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none",
+          )}
+          style={{ left: listCollapsed ? 8 : Math.max(8, listWidth - 36) }}
+          onClick={() => collapseList(!listCollapsed)}
         >
-          <Icon name="ChevronRight" className="size-3.5" />
+          <Icon name="PanelLeft" className="size-3.5" />
         </button>
       ) : null}
     </div>

@@ -4,7 +4,6 @@ import { createPortal } from "react-dom";
 import { Icon } from "@/components/ui/icon";
 import { usePortalScopeProps } from "@/lib/portal-scope";
 import { cn } from "@/lib/utils";
-import { vaultBreadcrumbs } from "@/lib/vault-paths";
 
 export interface VaultChoice {
   id: string;
@@ -12,9 +11,7 @@ export interface VaultChoice {
 }
 
 export interface BreadcrumbsProps {
-  folder: string;
   rootLabel: string;
-  onNavigate: (path: string) => void;
   vaults?: readonly VaultChoice[];
   vaultId?: string | null;
   onSelectVault?: (vaultId: string) => void;
@@ -22,15 +19,12 @@ export interface BreadcrumbsProps {
 }
 
 export function Breadcrumbs({
-  folder,
   rootLabel,
-  onNavigate,
   vaults = [],
   vaultId = null,
   onSelectVault,
   className,
 }: BreadcrumbsProps) {
-  const crumbs = vaultBreadcrumbs(folder, rootLabel);
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuBox, setMenuBox] = useState({ top: 0, left: 0 });
   const rootRef = useRef<HTMLButtonElement>(null);
@@ -71,41 +65,22 @@ export function Breadcrumbs({
       data-testid="vault-breadcrumbs"
       className={cn("flex w-max min-w-0 items-center gap-0.5", className)}
     >
-      {crumbs.map((crumb, index) => {
-        const isLast = index === crumbs.length - 1;
-        const isVault = crumb.isRoot && canPickVault;
-        return (
-          <div key={`${crumb.isRoot ? "root" : crumb.path}`} className="flex shrink-0 items-center gap-0.5">
-            {index === 0 ? null : (
-              <Icon name="ChevronRight" className="size-3 shrink-0 text-muted-foreground" aria-hidden="true" />
-            )}
-            <button
-              ref={isVault ? rootRef : undefined}
-              type="button"
-              aria-current={isLast ? "page" : undefined}
-              aria-haspopup={isVault ? "listbox" : undefined}
-              aria-expanded={isVault ? menuOpen : undefined}
-              aria-controls={isVault && menuOpen ? menuId : undefined}
-              className={cn(
-                "flex h-6 items-center gap-1 rounded-md px-1.5 whitespace-nowrap",
-                "hover:bg-state-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
-                isLast ? "text-xs font-semibold text-foreground" : "text-xs text-muted-foreground",
-              )}
-              onClick={() => {
-                if (isVault) {
-                  setMenuOpen((open) => !open);
-                  return;
-                }
-                if (!isLast) onNavigate(crumb.path);
-              }}
-            >
-              {crumb.isRoot ? <Icon name="FolderOpen" className="size-3.5 shrink-0" aria-hidden="true" /> : null}
-              <span>{crumb.name}</span>
-              {isVault ? <Icon name="ChevronDown" className="size-3 shrink-0 text-muted-foreground" aria-hidden="true" /> : null}
-            </button>
-          </div>
-        );
-      })}
+      <button
+        ref={canPickVault ? rootRef : undefined}
+        type="button"
+        aria-current="page"
+        aria-haspopup={canPickVault ? "listbox" : undefined}
+        aria-expanded={canPickVault ? menuOpen : undefined}
+        aria-controls={canPickVault && menuOpen ? menuId : undefined}
+        className="flex h-7 items-center gap-1 rounded-md px-1.5 text-xs font-semibold whitespace-nowrap text-foreground hover:bg-state-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        onClick={() => {
+          if (canPickVault) setMenuOpen((open) => !open);
+        }}
+      >
+        <Icon name="FolderOpen" className="size-3.5 shrink-0" aria-hidden="true" />
+        <span>{rootLabel}</span>
+        {canPickVault ? <Icon name="ChevronDown" className="size-3 shrink-0 text-muted-foreground" aria-hidden="true" /> : null}
+      </button>
       {menuOpen && portalTarget !== null
         ? createPortal(
             <div
