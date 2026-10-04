@@ -1,16 +1,69 @@
+import { useEffect, useId, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+
 import { Icon } from "@/components/ui/icon";
+import { usePortalScopeProps } from "@/lib/portal-scope";
 import { cn } from "@/lib/utils";
 import { vaultBreadcrumbs } from "@/lib/vault-paths";
+
+export interface VaultChoice {
+  id: string;
+  name: string;
+}
 
 export interface BreadcrumbsProps {
   folder: string;
   rootLabel: string;
   onNavigate: (path: string) => void;
+  vaults?: readonly VaultChoice[];
+  vaultId?: string | null;
+  onSelectVault?: (vaultId: string) => void;
   className?: string;
 }
 
-export function Breadcrumbs({ folder, rootLabel, onNavigate, className }: BreadcrumbsProps) {
+export function Breadcrumbs({
+  folder,
+  rootLabel,
+  onNavigate,
+  vaults = [],
+  vaultId = null,
+  onSelectVault,
+  className,
+}: BreadcrumbsProps) {
   const crumbs = vaultBreadcrumbs(folder, rootLabel);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [menuBox, setMenuBox] = useState({ top: 0, left: 0 });
+  const rootRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const menuId = useId();
+  const portalScopeProps = usePortalScopeProps();
+  const canPickVault = vaults.length > 0 && onSelectVault !== undefined;
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const anchor = rootRef.current;
+    if (anchor !== null) {
+      const rect = anchor.getBoundingClientRect();
+      setMenuBox({ top: rect.bottom + 4, left: rect.left });
+    }
+    function onPointerDown(event: PointerEvent) {
+      if (!(event.target instanceof Node)) return;
+      if (rootRef.current?.contains(event.target)) return;
+      if (menuRef.current?.contains(event.target)) return;
+      setMenuOpen(false);
+    }
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") setMenuOpen(false);
+    }
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [menuOpen]);
+
+  const portalTarget = typeof document === "undefined" ? null : document.body;
 
   return (
     <nav
@@ -20,29 +73,75 @@ export function Breadcrumbs({ folder, rootLabel, onNavigate, className }: Breadc
     >
       {crumbs.map((crumb, index) => {
         const isLast = index === crumbs.length - 1;
+        const isVault = crumb.isRoot && canPickVault;
         return (
           <div key={`${crumb.isRoot ? "root" : crumb.path}`} className="flex shrink-0 items-center gap-0.5">
             {index === 0 ? null : (
-              <Icon name="ChevronRight" className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+              <Icon name="ChevronRight" className="size-3 shrink-0 text-muted-foreground" aria-hidden="true" />
             )}
             <button
+              ref={isVault ? rootRef : undefined}
               type="button"
               aria-current={isLast ? "page" : undefined}
+              aria-haspopup={isVault ? "listbox" : undefined}
+              aria-expanded={isVault ? menuOpen : undefined}
+              aria-controls={isVault && menuOpen ? menuId : undefined}
               className={cn(
-                "flex h-7 items-center gap-1 rounded-md px-1.5 whitespace-nowrap",
-                "hover:bg-state-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                isLast ? "text-sm font-semibold text-foreground" : "text-sm text-muted-foreground",
+                "flex h-6 items-center gap-1 rounded-md px-1.5 whitespace-nowrap",
+                "hover:bg-state-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+                isLast ? "text-xs font-semibold text-foreground" : "text-xs text-muted-foreground",
               )}
               onClick={() => {
+                if (isVault) {
+                  setMenuOpen((open) => !open);
+                  return;
+                }
                 if (!isLast) onNavigate(crumb.path);
               }}
             >
-              {crumb.isRoot ? <Icon name="FolderOpen" className="size-4 shrink-0" aria-hidden="true" /> : null}
+              {crumb.isRoot ? <Icon name="FolderOpen" className="size-3.5 shrink-0" aria-hidden="true" /> : null}
               <span>{crumb.name}</span>
+              {isVault ? <Icon name="ChevronDown" className="size-3 shrink-0 text-muted-foreground" aria-hidden="true" /> : null}
             </button>
           </div>
         );
       })}
+      {menuOpen && portalTarget !== null
+        ? createPortal(
+            <div
+              {...portalScopeProps}
+              ref={menuRef}
+              id={menuId}
+              role="listbox"
+              aria-label="디렉토리"
+              className="max-h-64 min-w-40 overflow-y-auto rounded-md border border-border bg-background p-1 shadow-md"
+              style={{ position: "fixed", top: menuBox.top, left: menuBox.left, zIndex: 80 }}
+            >
+              {vaults.map((vault) => {
+                const selected = vault.id === vaultId;
+                return (
+                  <button
+                    key={vault.id}
+                    type="button"
+                    role="option"
+                    aria-selected={selected}
+                    className={cn(
+                      "flex h-7 w-full items-center rounded-md px-2 text-left text-xs",
+                      selected ? "bg-accent text-accent-foreground" : "hover:bg-state-hover",
+                    )}
+                    onClick={() => {
+                      setMenuOpen(false);
+                      onSelectVault?.(vault.id);
+                    }}
+                  >
+                    {vault.name}
+                  </button>
+                );
+              })}
+            </div>,
+            portalTarget,
+          )
+        : null}
     </nav>
   );
 }

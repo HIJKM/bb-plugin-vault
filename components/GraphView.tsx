@@ -1,5 +1,7 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Icon } from "@/components/ui/icon";
+import { useMediaQuery } from "@/components/ui/hooks/use-media-query";
 import type { GraphEdge, GraphNode } from "@/lib/note-graph";
 import {
   aimGraphCameraAt,
@@ -36,6 +38,8 @@ const SELECTED_NODE_COLOR = "#8b5cf6";
 const INFO_TRANSITION_MS = 180;
 const FOCUS_MS = 560;
 const MAX_GRAPH_ZOOM = 8;
+const GRAPH_HELP =
+  "드래그로 회전 · 휠로 확대 · 노트 탭으로 정보 · Shift+드래그로 이동 · 방향키로 회전 · +/−로 확대 · Home으로 초기화";
 type Point = { x: number; y: number };
 type Controls = {
   redraw: () => void;
@@ -46,17 +50,55 @@ type Controls = {
   focusPath: (path: string) => void;
 };
 
+export function GraphHelp() {
+  const coarse = useMediaQuery("(pointer: coarse)");
+  const [open, setOpen] = useState(false);
+  return (
+    <div
+      className="absolute right-2 bottom-1.5 z-20"
+      onMouseEnter={() => {
+        if (!coarse) setOpen(true);
+      }}
+      onMouseLeave={() => {
+        if (!coarse) setOpen(false);
+      }}
+    >
+      <button
+        type="button"
+        aria-label="사용법"
+        aria-expanded={open}
+        className="inline-flex size-6 items-center justify-center rounded-md text-muted-foreground/70 hover:bg-state-hover hover:text-foreground"
+        onClick={() => {
+          if (coarse) setOpen((value) => !value);
+        }}
+      >
+        <Icon name="Info" className="size-3.5" />
+      </button>
+      {open ? (
+        <p
+          role="tooltip"
+          className="absolute right-0 bottom-full z-20 mb-1 w-56 rounded-md border border-border bg-popover px-2 py-1.5 text-[11px] leading-snug text-popover-foreground shadow-md"
+        >
+          {GRAPH_HELP}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 export function GraphView({
   nodes,
   edges,
   activePath,
   onOpen,
+  onFullscreen,
   variant = "full",
 }: {
   nodes: GraphNode[];
   edges: GraphEdge[];
   activePath: string;
   onOpen: (path: string) => void;
+  onFullscreen?: () => void;
   variant?: "full" | "local";
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -275,6 +317,7 @@ export function GraphView({
     let hoverEdges: typeof layout.edges = [];
     let selected = -1;
     let selectedStarted = 0;
+    let pinLayout = false;
     let infoDelay: ReturnType<typeof setTimeout> | null = null;
     let infoIndex = -1;
     let projected: ProjectedGraphNode[] = [];
@@ -296,7 +339,7 @@ export function GraphView({
       if (index < 0) {
         focusIndex = -1;
         focusFrom = null;
-        syncLocalSelection(path);
+        if (selected >= 0 || infoIndex >= 0) selectInfo(-1);
         requestDraw();
         return;
       }
@@ -307,17 +350,8 @@ export function GraphView({
         aimGraphCameraAt(camera, layout.nodes[index]);
         focusFrom = null;
       }
-      syncLocalSelection(path);
+      if (selected !== index || infoIndex !== index) selectInfo(index, false);
       requestDraw();
-    }
-    function syncLocalSelection(path: string) {
-      if (!propsRef.current.local) return;
-      const index = indices.get(path) ?? -1;
-      if (index < 0) {
-        if (infoIndex >= 0 || selected >= 0) selectInfo(-1);
-        return;
-      }
-      selectInfo(index, false);
     }
     function applyFocus(time: number) {
       if (focusIndex < 0 || focusFrom === null) return false;
@@ -411,10 +445,12 @@ export function GraphView({
       // 빈 공간을 탭할 때만 선택을 해제해 원래 파일 강조로 돌아간다.
       if (index < 0) {
         selected = -1;
+        pinLayout = false;
         dismissInfo();
         requestDraw();
         return;
       }
+      pinLayout = stealFocus;
       if (index === infoIndex) return;
       clearInfoDelay();
       selected = index;
@@ -453,7 +489,7 @@ export function GraphView({
       const focusing = applyFocus(time);
       const started = performance.now();
       // 조작 중에는 배치를 고정해 손가락 아래의 노트가 움직이지 않게 한다.
-      if (step < maxSteps && pointers.size === 0 && (selected < 0 || propsRef.current.local)) {
+      if (step < maxSteps && pointers.size === 0 && (!pinLayout || propsRef.current.local)) {
         const movement = stepGraphLayout(layout, step++);
         settledFrames = movement < 0.08 ? settledFrames + 1 : 0;
         if (settledFrames >= 8) step = maxSteps;
@@ -847,6 +883,20 @@ export function GraphView({
         )}
         {nodes.length > 0 && variant !== "local" ? (
           <>
+            {onFullscreen ? (
+              <div className="pointer-events-none absolute top-2 left-2 z-20">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="pointer-events-auto size-6"
+                  aria-label="그래프 전체화면"
+                  onClick={onFullscreen}
+                >
+                  <Icon name="Maximize2" className="size-3.5" />
+                </Button>
+              </div>
+            ) : null}
             <div className="pointer-events-none absolute top-2 right-2 z-20 flex items-center gap-2 text-[11px] text-muted-foreground">
               <div className="pointer-events-auto flex items-center">
                 <Button type="button" variant="ghost" size="icon" className="size-6" aria-label="확대" onClick={() => controlsRef.current?.zoom(1.2)}>+</Button>
@@ -859,9 +909,10 @@ export function GraphView({
                 near
               </span>
             </div>
-            <p id={helpId} className="pointer-events-none absolute inset-x-2 bottom-1.5 z-20 truncate text-[10px] leading-none text-muted-foreground/55">
-              드래그로 회전 · 휠로 확대 · 노트 탭으로 정보 · Shift+드래그로 이동 · 방향키로 회전 · +/−로 확대 · Home으로 초기화
+            <p id={helpId} className="pointer-events-none absolute h-px w-px overflow-hidden whitespace-nowrap">
+              {GRAPH_HELP}
             </p>
+            <GraphHelp />
           </>
         ) : null}
         {info !== null && (

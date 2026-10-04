@@ -1,7 +1,5 @@
 import { useEffect, useState } from "react";
 
-import { Button } from "@/components/ui/button";
-import { Icon } from "@/components/ui/icon";
 import {
   frontmatterFieldLabel,
   itemLabel,
@@ -15,7 +13,7 @@ import { resolveWikiTarget, type WikiEntry } from "@/lib/wiki-links";
 const OPEN_KEY = "vault-frontmatter-open";
 const PREVIEW_LIMIT = 3;
 
-function readOpen(): boolean {
+export function readFrontmatterOpen(): boolean {
   try {
     return localStorage.getItem(OPEN_KEY) === "1";
   } catch {
@@ -23,7 +21,7 @@ function readOpen(): boolean {
   }
 }
 
-function storeOpen(open: boolean): void {
+export function storeFrontmatterOpen(open: boolean): void {
   try {
     localStorage.setItem(OPEN_KEY, open ? "1" : "0");
   } catch {
@@ -55,7 +53,7 @@ function FieldValues({
   return (
     <div>
       <div className="text-xs font-medium text-muted-foreground">{frontmatterFieldLabel(field.key)}</div>
-      <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 pl-3">
+      <div className="mt-1 flex flex-col items-start gap-1">
         {visible.map((item, offset) => (
           <FieldValue
             key={`${field.key}-${offset}-${itemLabel(item)}`}
@@ -160,7 +158,6 @@ export function FrontmatterPanel({
   rawByHash: Readonly<Record<string, string>>;
   onOpen: (vaultId: string, path: string) => void;
 }) {
-  const [open, setOpen] = useState(readOpen);
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set());
 
   useEffect(() => {
@@ -170,54 +167,26 @@ export function FrontmatterPanel({
   if (fields.length === 0) return null;
 
   return (
-    <div className="mt-2">
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        className="h-7 gap-1 px-1.5 text-xs text-muted-foreground"
-        aria-expanded={open}
-        onClick={() => {
-          const next = !open;
-          setOpen(next);
-          storeOpen(next);
-        }}
-      >
-        <Icon name={open ? "ChevronDown" : "ChevronRight"} className="size-3.5" />
-        속성
-      </Button>
-      <div
-        className={cn(
-          "grid transition-[grid-template-rows,opacity] duration-200 ease-out motion-reduce:transition-none",
-          open ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
-        )}
-        aria-hidden={!open}
-        inert={!open}
-      >
-        <div className="min-h-0 overflow-hidden">
-          <div className="space-y-2 pt-1">
-            {fields.map((field) => (
-              <FieldValues
-                key={field.key}
-                field={field}
-                expanded={expanded.has(field.key)}
-                index={index}
-                vaultId={vaultId}
-                rawByHash={rawByHash}
-                onOpen={onOpen}
-                onToggle={() => {
-                  setExpanded((current) => {
-                    const next = new Set(current);
-                    if (next.has(field.key)) next.delete(field.key);
-                    else next.add(field.key);
-                    return next;
-                  });
-                }}
-              />
-            ))}
-          </div>
-        </div>
-      </div>
+    <div className="flex flex-col gap-3 px-3 py-3" aria-label="속성">
+      {fields.map((field) => (
+        <FieldValues
+          key={field.key}
+          field={field}
+          expanded={expanded.has(field.key)}
+          index={index}
+          vaultId={vaultId}
+          rawByHash={rawByHash}
+          onOpen={onOpen}
+          onToggle={() => {
+            setExpanded((current) => {
+              const next = new Set(current);
+              if (next.has(field.key)) next.delete(field.key);
+              else next.add(field.key);
+              return next;
+            });
+          }}
+        />
+      ))}
     </div>
   );
 }

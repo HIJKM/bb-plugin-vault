@@ -14,7 +14,7 @@ import { GraphView } from "@/components/GraphView";
 import { withPanelSplash } from "@/components/PanelSplash";
 import { DocViewToggle, type DocViewMode } from "@/components/DocViewToggle";
 import { DocumentEndSpace } from "@/components/DocumentEndSpace";
-import { FrontmatterPanel } from "@/components/FrontmatterPanel";
+import { FrontmatterPanel, readFrontmatterOpen, storeFrontmatterOpen } from "@/components/FrontmatterPanel";
 import { ImagePreview } from "@/components/ImagePreview";
 import { SettingsSection } from "@/components/SettingsSection";
 import { Toolbar } from "@/components/Toolbar";
@@ -39,7 +39,6 @@ const LIST_WIDTH_MIN = 200;
 const LIST_WIDTH_MAX = 560;
 const LIST_WIDTH_STEP = 16;
 const LIST_COLLAPSED_KEY = "vault-list-collapsed";
-const LIST_CARD_RIGHT = 16;
 const GRAPH_SPLIT_KEY = "vault-graph-split";
 const GRAPH_SPLIT_DEFAULT = 0.55;
 const GRAPH_SPLIT_MIN = 0.2;
@@ -208,18 +207,48 @@ function matchesDocQuery(entry: DocEntry, needle: string): boolean {
   return name.includes(needle) || label.includes(needle) || base.includes(needle);
 }
 
-function filterDocs(
+const TREE_INDENT = 16;
+const TREE_BASE = 8;
+const TREE_GUIDE_X = 8;
+
+type TreeRow = {
+  entry: DocEntry;
+  depth: number;
+};
+
+function visibleTreeRows(
   entries: readonly DocEntry[],
-  folder: string,
+  expanded: ReadonlySet<string>,
   query: string,
-): DocEntry[] {
+): TreeRow[] {
   const needle = query.trim().normalize("NFC").toLowerCase();
-  if (needle === "") return childrenOf(entries, folder);
-  const pool = childrenOf(entries, folder);
-  const matched = pool.filter((entry) => matchesDocQuery(entry, needle));
-  const folders = matched.filter((entry) => entry.kind === "directory").sort((a, b) => compareNames(a.name, b.name));
-  const files = matched.filter((entry) => entry.kind === "file").sort((a, b) => compareNames(a.name, b.name));
-  return [...folders, ...files];
+  const rows: TreeRow[] = [];
+
+  function walk(folder: string, depth: number): boolean {
+    let any = false;
+    for (const child of childrenOf(entries, folder)) {
+      if (child.kind === "directory") {
+        const start = rows.length;
+        rows.push({ entry: child, depth });
+        const open = needle !== "" || expanded.has(child.path);
+        const childHit = open ? walk(child.path, depth + 1) : false;
+        const selfHit = needle === "" || matchesDocQuery(child, needle);
+        if (needle !== "" && !selfHit && !childHit) {
+          rows.splice(start);
+          continue;
+        }
+        any = true;
+        continue;
+      }
+      if (needle !== "" && !matchesDocQuery(child, needle)) continue;
+      rows.push({ entry: child, depth });
+      any = true;
+    }
+    return any;
+  }
+
+  walk("", 0);
+  return rows;
 }
 
 function childrenOf(entries: readonly DocEntry[], folder: string): DocEntry[] {
@@ -323,7 +352,7 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
   function onGraphSplitPointerMove(event: PointerEvent<HTMLDivElement>) {
     const drag = graphSplitDrag.current;
     if (drag === null || drag.height <= 0) return;
-    applyGraphSplit(drag.startSplit + (event.clientY - drag.startY) / drag.height);
+    applyGraphSplit(drag.startSplit - (event.clientY - drag.startY) / drag.height);
   }
 
   function onGraphSplitPointerUp(event: PointerEvent<HTMLDivElement>) {
@@ -338,10 +367,10 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
   function onGraphSplitKeyDown(event: KeyboardEvent<HTMLDivElement>) {
     if (event.key === "ArrowUp") {
       event.preventDefault();
-      applyGraphSplit(graphSplit - GRAPH_SPLIT_STEP);
+      applyGraphSplit(graphSplit + GRAPH_SPLIT_STEP);
     } else if (event.key === "ArrowDown") {
       event.preventDefault();
-      applyGraphSplit(graphSplit + GRAPH_SPLIT_STEP);
+      applyGraphSplit(graphSplit - GRAPH_SPLIT_STEP);
     } else if (event.key === "Home") {
       event.preventDefault();
       applyGraphSplit(GRAPH_SPLIT_MIN);
@@ -381,7 +410,8 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
   const [viewMode, setViewMode] = useState<DocViewMode>("preview");
   const [graphOpen, setGraphOpen] = useState(false);
   const [graphPeek, setGraphPeek] = useState(true);
-  const [browseFolder, setBrowseFolder] = useState<string | null>(null);
+  const [propsOpen, setPropsOpen] = useState(readFrontmatterOpen);
+  const [expandedFolders, setExpandedFolders] = useState<ReadonlySet<string>>(() => new Set());
   const [graph, setGraph] = useState<{ nodes: GraphNode[]; edges: GraphEdge[] } | null>(null);
   const [loadingGraph, setLoadingGraph] = useState(false);
 
@@ -427,7 +457,7 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
       ? activePath.slice(0, activePath.lastIndexOf("/"))
       : ""
     : activePath;
-  const listFolder = browseFolder ?? routeFolder;
+  const listFolder = routeFolder;
   const vaultIndex = vaultId === null ? undefined : indexByVault[vaultId];
   const index = vaultIndex?.entries ?? [];
   const rawArchive = vaultIndex?.rawArchive ?? {};
@@ -445,17 +475,43 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
       fields: split.frontmatter === null ? [] : parseFrontmatterFields(split.frontmatter),
     };
   }, [doc, index, previewBaseUrl]);
-  const items = useMemo(() => childrenOf(index, listFolder), [index, listFolder]);
-  const visibleItems = useMemo(
-    () => filterDocs(index, listFolder, query),
-    [index, listFolder, query],
+  const treeRows = useMemo(
+    () => visibleTreeRows(index, expandedFolders, query),
+    [expandedFolders, index, query],
   );
   const showList = !compact || !viewingFile;
 
   useEffect(() => {
-    setBrowseFolder(null);
-  }, [vaultId, openFilePath]);
-  const folderScrollKey = listScrollKey(vaultId, listFolder);
+    setExpandedFolders(new Set());
+  }, [vaultId]);
+
+  function toggleFolder(path: string) {
+    setExpandedFolders((current) => {
+      const next = new Set(current);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      return next;
+    });
+  }
+
+  function revealFolder(path: string) {
+    setExpandedFolders((current) => {
+      const next = new Set(current);
+      let cursor = path;
+      while (cursor !== "") {
+        next.add(cursor);
+        const slash = cursor.lastIndexOf("/");
+        cursor = slash === -1 ? "" : cursor.slice(0, slash);
+      }
+      return next;
+    });
+    requestAnimationFrame(() => {
+      listScrollerRef.current
+        ?.querySelector(`[data-vault-path="${CSS.escape(path)}"]`)
+        ?.scrollIntoView({ block: "nearest" });
+    });
+  }
+  const folderScrollKey = listScrollKey(vaultId, "");
 
   useLayoutEffect(() => {
     const el = listScrollerRef.current;
@@ -464,7 +520,14 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
     return () => {
       if (query.trim() === "") writeListScroll(folderScrollKey, el.scrollTop);
     };
-  }, [folderScrollKey, query, showList, visibleItems.length]);
+  }, [folderScrollKey, query, showList, treeRows.length]);
+
+  useEffect(() => {
+    if (activePath === "") return;
+    listScrollerRef.current
+      ?.querySelector(`[data-vault-path="${CSS.escape(activePath)}"]`)
+      ?.scrollIntoView({ block: "nearest" });
+  }, [activePath]);
 
   const goTo = useCallback(
     (nextVault: string, nextPath: string, replace = false) => {
@@ -646,54 +709,21 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
         }
       }}
     >
-      <div className="flex items-center border-b border-border">
-        <div
-          data-allow-pan
-          className="flex min-w-0 flex-1 gap-1 overflow-x-auto px-2 py-2 touch-pan-x"
-        >
-          {vaults.map((vault) => {
-            const selected = vault.id === vaultId;
-            return (
-              <button
-                key={vault.id}
-                type="button"
-                className={cn(
-                  "shrink-0 rounded-md px-2.5 py-1 text-xs",
-                  selected ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:bg-state-hover",
-                )}
-                onClick={() => goTo(vault.id, "")}
-              >
-                {vault.name}
-              </button>
-            );
-          })}
-        </div>
-        {!compact ? (
-          <button
-            type="button"
-            aria-label="파일 목록 접기"
-            data-testid="vault-list-collapse"
-            className="mr-1 inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-state-hover hover:text-foreground"
-            onClick={() => collapseList(true)}
-          >
-            <Icon name="ChevronLeft" className="size-3.5" />
-          </button>
-        ) : null}
-      </div>
       <Toolbar
         folder={listFolder}
         rootLabel={activeVault?.name ?? "Vault"}
         onNavigate={(path) => {
-          if (vaultId === null) return;
-          if (viewingFile) {
-            setBrowseFolder(path);
-            return;
-          }
-          goTo(vaultId, path);
+          revealFolder(path);
         }}
         query={query}
         onQueryChange={setQuery}
         filterFocusTick={filterFocusTick}
+        graphOpen={graphPeek}
+        onToggleGraph={compact ? undefined : () => setGraphPeek((open) => !open)}
+        onToggleList={compact ? undefined : () => collapseList(true)}
+        vaults={vaults}
+        vaultId={vaultId}
+        onSelectVault={(id) => goTo(id, "")}
       />
       <div
         ref={listScrollerRef}
@@ -703,42 +733,59 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
           writeListScroll(folderScrollKey, event.currentTarget.scrollTop);
         }}
       >
-        {loadingVaults || (loadingIndex && items.length === 0) ? (
+        {loadingVaults || (loadingIndex && index.length === 0) ? (
           <p className="p-4 text-sm text-muted-foreground">불러오는 중…</p>
         ) : null}
-        {!loadingIndex && visibleItems.length === 0 ? (
+        {!loadingIndex && treeRows.length === 0 ? (
           <p className="p-4 text-sm text-muted-foreground">
-            {query.trim() ? "검색과 맞는 이름이 없습니다." : "이 폴더가 비어 있습니다."}
+            {query.trim() ? "검색과 맞는 이름이 없습니다." : "이 볼트가 비어 있습니다."}
           </p>
         ) : null}
-        <ul className="p-1">
-          {visibleItems.map((item) => {
+        <ul className="py-1" role="tree">
+          {treeRows.map((row) => {
+            const item = row.entry;
             const selected = item.path === activePath;
+            const expanded = item.kind === "directory" && (query.trim() !== "" || expandedFolders.has(item.path));
             return (
-              <li key={item.path}>
+              <li key={item.path} role="none">
                 <button
                   type="button"
+                  role="treeitem"
+                  aria-selected={selected}
+                  aria-expanded={item.kind === "directory" ? expanded : undefined}
+                  data-vault-path={item.path}
+                  title={item.path}
+                  style={{ paddingLeft: TREE_BASE + row.depth * TREE_INDENT }}
                   className={cn(
-                    "flex w-full min-w-0 items-center gap-2 rounded-md px-3 py-2 text-left",
+                    "relative flex h-7 w-full min-w-0 items-center gap-1.5 pr-2 text-left text-sm",
                     selected ? "bg-accent text-accent-foreground" : "hover:bg-state-hover",
                   )}
                   onClick={() => {
-                    if (vaultId === null) return;
                     if (item.kind === "directory") {
-                      if (viewingFile) setBrowseFolder(item.path);
-                      else goTo(vaultId, item.path);
+                      toggleFolder(item.path);
                       return;
                     }
+                    if (vaultId === null) return;
                     goTo(vaultId, item.path);
                   }}
                 >
+                  {row.depth > 0
+                    ? Array.from({ length: row.depth }, (_, level) => (
+                        <span
+                          key={level}
+                          aria-hidden
+                          className="pointer-events-none absolute top-0 bottom-0 w-px bg-border"
+                          style={{ left: TREE_BASE + level * TREE_INDENT + TREE_GUIDE_X }}
+                        />
+                      ))
+                    : null}
                   <Icon
                     name={
                       item.kind === "directory" ? "Folder" : isImageFileName(item.path) ? "File" : "FileText"
                     }
                     className="size-4 shrink-0"
                   />
-                  <span className="min-w-0 flex-1 truncate text-sm">
+                  <span className="min-w-0 flex-1 truncate">
                     {item.kind === "file" ? fileLabel(item.name) : item.name}
                   </span>
                 </button>
@@ -795,25 +842,30 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
         <>
           <div
             className={cn(
-              "border-b border-border py-3 pr-4",
-              !compact && listCollapsed ? "pl-12" : "pl-4",
+              "flex h-8 shrink-0 items-center gap-2 border-b border-border pr-2",
+              !compact && listCollapsed ? "pl-12" : "pl-3",
             )}
           >
-            <div className="flex items-center gap-2">
-              <h1 className="min-w-0 flex-1 truncate text-base font-medium">{fileLabel(doc.name)}</h1>
-              {doc.kind === "markdown" || doc.kind === "html" ? (
-                <DocViewToggle mode={viewMode} onChange={setViewMode} />
-              ) : null}
-            </div>
-            {doc.kind === "markdown" && viewMode === "preview" ? (
-              <FrontmatterPanel
-                fields={markdown.fields}
-                docPath={doc.path}
-                index={index}
-                vaultId={vaultId}
-                rawByHash={rawArchive}
-                onOpen={goTo}
-              />
+            <h1 className="min-w-0 flex-1 truncate text-sm font-medium">{fileLabel(doc.name)}</h1>
+            {doc.kind === "markdown" && viewMode === "preview" && markdown.fields.length > 0 ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-7 gap-1 px-1.5 text-xs"
+                aria-pressed={propsOpen}
+                aria-label="속성"
+                onClick={() => {
+                  const next = !propsOpen;
+                  setPropsOpen(next);
+                  storeFrontmatterOpen(next);
+                }}
+              >
+                속성
+              </Button>
+            ) : null}
+            {doc.kind === "markdown" || doc.kind === "html" ? (
+              <DocViewToggle mode={viewMode} onChange={setViewMode} />
             ) : null}
           </div>
           <div className="flex min-h-0 min-w-0 flex-1">
@@ -846,6 +898,18 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
               {!(doc.kind === "html" && viewMode === "preview") ? <DocumentEndSpace /> : null}
             </div>
             )}
+            {propsOpen && doc.kind === "markdown" && viewMode === "preview" && markdown.fields.length > 0 ? (
+              <aside className="w-56 shrink-0 overflow-y-auto border-l border-border">
+                <FrontmatterPanel
+                  fields={markdown.fields}
+                  docPath={doc.path}
+                  index={index}
+                  vaultId={vaultId}
+                  rawByHash={rawArchive}
+                  onOpen={goTo}
+                />
+              </aside>
+            ) : null}
           </div>
         </>
       )}
@@ -903,7 +967,7 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
               ? ""
               : "transition-[width] duration-[420ms] ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none",
           )}
-          style={{ width: listCollapsed ? 0 : listWidth + LIST_CARD_RIGHT }}
+          style={{ width: listCollapsed ? 0 : listWidth }}
         >
           <div
             data-testid="vault-list-card"
@@ -916,20 +980,34 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
             )}
             style={{ width: listWidth }}
           >
-            <button
-              type="button"
-              aria-pressed={graphPeek}
-              data-testid="vault-column-graph"
-              className={cn(
-                "flex h-8 shrink-0 items-center gap-2 border-b border-border px-3 text-xs",
-                graphPeek ? "text-foreground" : "text-muted-foreground hover:text-foreground",
-              )}
-              onClick={() => setGraphPeek((open) => !open)}
-            >
-              <Icon name="GitBranch" className="size-3.5" />
-              그래프
-            </button>
             <div className="flex min-h-0 flex-1 flex-col">
+              <div
+                className="flex min-h-0 flex-col"
+                style={{ flexGrow: graphPeek ? 1 - graphSplit : 1, flexBasis: 0 }}
+              >
+                {listPane}
+              </div>
+              {graphPeek ? (
+                <div
+                  role="separator"
+                  aria-orientation="horizontal"
+                  aria-label="그래프 높이"
+                  aria-valuemin={Math.round(GRAPH_SPLIT_MIN * 100)}
+                  aria-valuemax={Math.round(GRAPH_SPLIT_MAX * 100)}
+                  aria-valuenow={Math.round(graphSplit * 100)}
+                  tabIndex={0}
+                  className={cn(
+                    "relative z-10 h-px shrink-0 cursor-row-resize touch-none before:absolute before:inset-x-0 before:-top-1.5 before:h-3 before:content-['']",
+                    resizing && graphSplitDrag.current !== null ? "bg-primary" : "bg-border",
+                  )}
+                  onPointerDown={onGraphSplitPointerDown}
+                  onPointerMove={onGraphSplitPointerMove}
+                  onPointerUp={onGraphSplitPointerUp}
+                  onPointerCancel={onGraphSplitPointerUp}
+                  onDoubleClick={() => applyGraphSplit(GRAPH_SPLIT_DEFAULT)}
+                  onKeyDown={onGraphSplitKeyDown}
+                />
+              ) : null}
               {graphPeek ? (
                 <div
                   className="flex min-h-0 flex-col"
@@ -943,6 +1021,7 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
                       nodes={graph?.nodes ?? []}
                       edges={graph?.edges ?? []}
                       activePath={activePath}
+                      onFullscreen={() => setGraphOpen(true)}
                       onOpen={(path) => {
                         if (vaultId === null) return;
                         goTo(vaultId, path);
@@ -951,37 +1030,6 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
                   )}
                 </div>
               ) : null}
-              {graphPeek ? (
-                <div
-                  role="separator"
-                  aria-orientation="horizontal"
-                  aria-label="그래프 높이"
-                  aria-valuemin={Math.round(GRAPH_SPLIT_MIN * 100)}
-                  aria-valuemax={Math.round(GRAPH_SPLIT_MAX * 100)}
-                  aria-valuenow={Math.round(graphSplit * 100)}
-                  tabIndex={0}
-                  className="relative z-10 flex h-3 shrink-0 cursor-row-resize touch-none items-center justify-center"
-                  onPointerDown={onGraphSplitPointerDown}
-                  onPointerMove={onGraphSplitPointerMove}
-                  onPointerUp={onGraphSplitPointerUp}
-                  onPointerCancel={onGraphSplitPointerUp}
-                  onDoubleClick={() => applyGraphSplit(GRAPH_SPLIT_DEFAULT)}
-                  onKeyDown={onGraphSplitKeyDown}
-                >
-                  <span
-                    className={cn(
-                      "h-1 w-4 rounded-full",
-                      resizing ? "bg-primary" : "bg-foreground/35",
-                    )}
-                  />
-                </div>
-              ) : null}
-              <div
-                className="flex min-h-0 flex-col"
-                style={{ flexGrow: graphPeek ? 1 - graphSplit : 1, flexBasis: 0 }}
-              >
-                {listPane}
-              </div>
             </div>
             <div
               role="separator"
@@ -991,21 +1039,17 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
               aria-valuemax={LIST_WIDTH_MAX}
               aria-valuenow={listWidth}
               tabIndex={listCollapsed ? -1 : 0}
-              className="absolute top-1/2 left-full z-10 ml-1 flex h-8 w-3 -translate-y-1/2 cursor-col-resize touch-none items-center justify-center"
+              className={cn(
+                "absolute inset-y-0 right-0 z-10 w-px cursor-col-resize touch-none before:absolute before:inset-y-0 before:-left-1.5 before:w-3 before:content-['']",
+                resizing && resizeDrag.current !== null ? "bg-primary" : "bg-border",
+              )}
               onPointerDown={onResizePointerDown}
               onPointerMove={onResizePointerMove}
               onPointerUp={onResizePointerUp}
               onPointerCancel={onResizePointerUp}
               onDoubleClick={() => applyListWidth(LIST_WIDTH_DEFAULT)}
               onKeyDown={onResizeKeyDown}
-            >
-              <span
-                className={cn(
-                  "h-4 w-1 rounded-full",
-                  resizing ? "bg-primary" : "bg-foreground/35",
-                )}
-              />
-            </div>
+            />
           </div>
         </div>
       ) : null}
@@ -1015,7 +1059,7 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
           type="button"
           aria-label="파일 목록 펼치기"
           data-testid="vault-list-expand"
-          className="absolute left-2 top-2 z-20 inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-state-hover hover:text-foreground"
+          className="absolute top-0.5 left-2 z-20 inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-state-hover hover:text-foreground"
           onClick={() => collapseList(false)}
         >
           <Icon name="ChevronRight" className="size-3.5" />

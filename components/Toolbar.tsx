@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import { PathBar } from "@/components/PathBar";
+import type { VaultChoice } from "@/components/Breadcrumbs";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { Input } from "@/components/ui/input";
@@ -36,6 +37,12 @@ export interface ToolbarProps {
   onQueryChange: (query: string) => void;
   filterFocusTick?: number;
   onOpenGraph?: () => void;
+  graphOpen?: boolean;
+  onToggleGraph?: () => void;
+  onToggleList?: () => void;
+  vaults?: readonly VaultChoice[];
+  vaultId?: string | null;
+  onSelectVault?: (vaultId: string) => void;
 }
 
 export function Toolbar({
@@ -46,6 +53,12 @@ export function Toolbar({
   onQueryChange,
   filterFocusTick = 0,
   onOpenGraph,
+  graphOpen = false,
+  onToggleGraph,
+  onToggleList,
+  vaults,
+  vaultId,
+  onSelectVault,
 }: ToolbarProps) {
   const [filterOpen, setFilterOpen] = useState(false);
   const [popoverBox, setPopoverBox] = useState({ top: 0, left: 0, width: POPOVER_WIDTH });
@@ -101,9 +114,16 @@ export function Toolbar({
   return (
     <div
       data-testid="vault-toolbar"
-      className="relative flex shrink-0 items-center gap-1.5 border-b border-border px-3 py-2"
+      className="relative flex h-8 shrink-0 items-center gap-0.5 border-b border-border px-1.5"
     >
-      <PathBar folder={folder} rootLabel={rootLabel} onNavigate={onNavigate} />
+      <PathBar
+        folder={folder}
+        rootLabel={rootLabel}
+        onNavigate={onNavigate}
+        vaults={vaults}
+        vaultId={vaultId}
+        onSelectVault={onSelectVault}
+      />
 
       {onOpenGraph ? (
         <Button
@@ -114,6 +134,21 @@ export function Toolbar({
           aria-label="그래프 보기"
           data-testid="vault-graph"
           onClick={onOpenGraph}
+        >
+          <Icon name="GitBranch" className="size-3.5" aria-hidden="true" />
+        </Button>
+      ) : null}
+
+      {onToggleGraph ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className={ACTION_BUTTON_CLASS}
+          aria-label="그래프"
+          aria-pressed={graphOpen}
+          data-testid="vault-column-graph"
+          onClick={onToggleGraph}
         >
           <Icon name="GitBranch" className="size-3.5" aria-hidden="true" />
         </Button>
@@ -137,6 +172,20 @@ export function Toolbar({
           ) : null}
         </Button>
       </div>
+
+      {onToggleList ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className={ACTION_BUTTON_CLASS}
+          aria-label="파일 목록 접기"
+          data-testid="vault-list-collapse"
+          onClick={onToggleList}
+        >
+          <Icon name="PanelLeft" className="size-3.5" aria-hidden="true" />
+        </Button>
+      ) : null}
 
       {filterOpen && portalTarget !== null
         ? createPortal(
