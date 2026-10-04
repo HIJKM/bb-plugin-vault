@@ -1,4 +1,4 @@
-const KEY = "bb-plugin-docs-reader:list-scroll:v1";
+const KEY = "bb-plugin-vault:list-scroll:v1";
 const MAX_BYTES = 8 * 1024;
 
 let memory: Record<string, number> | undefined;
