@@ -10,7 +10,26 @@ export function highlightedNodeIndices(
   return indices;
 }
 
-export const AGENT_MARK_COLOR = "#ff4d4d";
+/** Flamingo. Brighter than the old pure red, and pinker. */
+export const AGENT_MARK_COLOR = "#ff6b81";
+const AGENT_MARK_RGB = "255, 107, 129";
+
+/** Halo stays inside 8px. Nodes themselves are only 1–3.2px. */
+export function agentMarkGlow(nodeRadius: number): {
+  innerRadius: number;
+  outerRadius: number;
+  stops: readonly (readonly [number, string])[];
+} {
+  return {
+    innerRadius: nodeRadius * 0.35,
+    outerRadius: Math.max(8, nodeRadius * 2.5),
+    stops: [
+      [0, `rgba(${AGENT_MARK_RGB}, 0.9)`],
+      [0.22, `rgba(${AGENT_MARK_RGB}, 0.28)`],
+      [1, `rgba(${AGENT_MARK_RGB}, 0)`],
+    ],
+  };
+}
 
 export function graphNodeEmphasis(input: {
   index: number;

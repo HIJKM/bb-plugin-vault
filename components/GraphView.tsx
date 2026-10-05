@@ -39,7 +39,7 @@ import {
   placeGraphCallout,
   type CalloutRect,
 } from "@/lib/graph-callouts";
-import { graphLabelHidden, graphNodeEmphasis, highlightedNodeIndices } from "@/lib/graph-highlight";
+import { agentMarkGlow, graphLabelHidden, graphNodeEmphasis, highlightedNodeIndices } from "@/lib/graph-highlight";
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 const SELECTED_NODE_COLOR = "#8b5cf6";
@@ -608,22 +608,20 @@ export function GraphView({
         });
         if (emphasis.glow) {
           const nodeRadius = radius(index);
-          const glowRadius = Math.max(18, nodeRadius * 9);
+          const glow = agentMarkGlow(nodeRadius);
           const gradient = ctx!.createRadialGradient(
             point.x,
             point.y,
-            nodeRadius * 0.4,
+            glow.innerRadius,
             point.x,
             point.y,
-            glowRadius,
+            glow.outerRadius,
           );
-          gradient.addColorStop(0, "rgba(255, 77, 77, 0.95)");
-          gradient.addColorStop(0.42, "rgba(255, 77, 77, 0.55)");
-          gradient.addColorStop(1, "rgba(255, 77, 77, 0)");
+          for (const [offset, color] of glow.stops) gradient.addColorStop(offset, color);
           ctx!.globalAlpha = 1;
           ctx!.fillStyle = gradient;
           ctx!.beginPath();
-          ctx!.arc(point.x, point.y, glowRadius, 0, Math.PI * 2);
+          ctx!.arc(point.x, point.y, glow.outerRadius, 0, Math.PI * 2);
           ctx!.fill();
           ctx!.fillStyle = emphasis.color;
           ctx!.beginPath();

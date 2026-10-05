@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { graphLabelHidden, graphNodeEmphasis, highlightedNodeIndices } from "./graph-highlight.ts";
+import {
+  AGENT_MARK_COLOR,
+  agentMarkGlow,
+  graphLabelHidden,
+  graphNodeEmphasis,
+  highlightedNodeIndices,
+} from "./graph-highlight.ts";
 import {
   chooseVault,
   claimDirectiveOpen,
@@ -196,7 +202,7 @@ describe("panel contract", () => {
 });
 
 describe("graph highlight", () => {
-  it("paints an agent mark bright red, with no ring and no forced label", () => {
+  it("paints an agent mark flamingo, with a tight glow and no forced label", () => {
     const nodes = [{ path: "a.md" }, { path: "b.md" }, { path: "c.md" }];
     assert.deepEqual([...highlightedNodeIndices(nodes, ["b.md", "missing.md", "b.md"])], [1]);
     const marked = graphNodeEmphasis({
@@ -207,7 +213,13 @@ describe("graph highlight", () => {
       appearance: { color: "#111", opacity: 0.4 },
       selectedColor: "#8b5cf6",
     });
-    assert.deepEqual(marked, { color: "#ff4d4d", alpha: 1, ring: false, glow: true });
+    assert.equal(AGENT_MARK_COLOR, "#ff6b81");
+    assert.deepEqual(marked, { color: AGENT_MARK_COLOR, alpha: 1, ring: false, glow: true });
+    const glow = agentMarkGlow(3.2);
+    assert.equal(glow.outerRadius, 8);
+    assert.ok(glow.stops[1][0] <= 0.25);
+    assert.match(glow.stops[0][1], /255, 107, 129/);
+    assert.match(glow.stops.at(-1)?.[1] ?? "", /, 0\)$/);
     const dimmed = graphNodeEmphasis({
       index: 2,
       selected: 0,
