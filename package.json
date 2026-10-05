@@ -12,7 +12,10 @@
     "name": "Vault",
     "description": "Read Docs vaults as rendered text. Never writes.",
     "branding": {
-      "icon": "./assets/icon.svg"
+      "icon": "./assets/icon.svg",
+      "experimental_icons": {
+        "obsidian": "./assets/obsidian-line.svg"
+      }
     },
     "server": "./server.ts",
     "app": "./app.tsx"
