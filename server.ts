@@ -6,6 +6,7 @@ import { defineRpcContract, type BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 
 import { registerVaultAgentTools } from "./lib/agent-tools";
+import { entryIsHidden } from "./lib/hidden-files";
 import { buildNoteGraph } from "./lib/note-graph";
 import { joinPreviewUrl } from "./lib/preview-url";
 import { parseRawArchiveJsonl, RAW_ARCHIVE_RELATIVE } from "./lib/raw-archive";
@@ -402,7 +403,10 @@ export default async function plugin(bb: BbPluginApi) {
     return vault;
   }
 
-  async function listVaultEntries(vault: z.infer<typeof vaultSchema>): Promise<z.infer<typeof entrySchema>[]> {
+  async function listVaultEntries(
+    vault: z.infer<typeof vaultSchema>,
+    options?: { includeHidden?: boolean },
+  ): Promise<z.infer<typeof entrySchema>[]> {
     const listed = await bb.sdk.files.listPaths({
       path: vault.rootPath,
       hostId: vault.hostId ?? undefined,
@@ -413,7 +417,8 @@ export default async function plugin(bb: BbPluginApi) {
     const entries: z.infer<typeof entrySchema>[] = [];
     for (const row of listed.paths) {
       const relative = toRelative(vault.rootPath, row.path);
-      if (relative === "" || relative.split("/").some((part) => part.startsWith("."))) continue;
+      if (relative === "") continue;
+      if (options?.includeHidden !== true && entryIsHidden(relative, [])) continue;
       const kind = entryKind(row.kind);
       if (kind === "file" && !isListedFile(relative)) continue;
       entries.push({ kind, path: relative, name: displayName(relative, kind) });
@@ -551,7 +556,7 @@ export default async function plugin(bb: BbPluginApi) {
         return { vaultId, entries: cached.entries, rawArchive: cached.rawArchive };
       }
       const vault = await vaultById(vaultId);
-      const entries = await listVaultEntries(vault);
+      const entries = await listVaultEntries(vault, { includeHidden: true });
       const rawArchive = await loadRawArchive(vault);
       indexCache.set(vaultId, { at: Date.now(), entries, rawArchive });
       return { vaultId, entries, rawArchive };

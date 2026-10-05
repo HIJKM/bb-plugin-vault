@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { COARSE_POINTER_HEADER_BAR_CLASS, COARSE_POINTER_ICON_BUTTON_GROW_CLASS } from "@/components/ui/coarse-pointer-sizing";
 import { Icon } from "@/components/ui/icon";
 import { Input } from "@/components/ui/input";
+import { setShowHidden, useHiddenPrefs } from "@/lib/hidden-prefs";
 import { usePortalScopeProps } from "@/lib/portal-scope";
 import { cn } from "@/lib/utils";
 
@@ -105,6 +106,7 @@ export function Toolbar({
     };
   }, [filterOpen]);
 
+  const { showHidden } = useHiddenPrefs();
   const filterActive = query !== "";
   const portalTarget = typeof document === "undefined" ? null : document.body;
 
@@ -152,6 +154,19 @@ export function Toolbar({
           <Icon name="GitBranch" className="size-3.5" aria-hidden="true" />
         </Button>
       ) : null}
+
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        className={ACTION_BUTTON_CLASS}
+        aria-label="숨김 파일 표시"
+        aria-pressed={showHidden}
+        data-testid="vault-show-hidden"
+        onClick={() => setShowHidden(!showHidden)}
+      >
+        <Icon name={showHidden ? "Eye" : "EyeOff"} className="size-3.5" aria-hidden="true" />
+      </Button>
 
       <div className="relative shrink-0" ref={filterWrapRef} title="필터검색 (Ctrl+F)">
         <Button

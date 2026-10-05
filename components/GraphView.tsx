@@ -1045,7 +1045,7 @@ export function GraphView({
         {nodes.length > 0 && variant !== "local" ? (
           <>
             {onFullscreen ? (
-              <div className="pointer-events-none absolute top-2 left-2 z-20">
+              <div className="pointer-events-none absolute bottom-2 left-2 z-20">
                 <Button
                   type="button"
                   variant="ghost"

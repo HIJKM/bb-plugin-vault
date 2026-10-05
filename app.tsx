@@ -21,6 +21,7 @@ import { DocViewToggle, type DocViewMode } from "@/components/DocViewToggle";
 import { DocumentEndSpace } from "@/components/DocumentEndSpace";
 import { FrontmatterPanel, PropertiesDock, PropertiesSheet, readFrontmatterOpen, storeFrontmatterOpen } from "@/components/FrontmatterPanel";
 import { ImagePreview } from "@/components/ImagePreview";
+import { HiddenFilesSettings } from "@/components/HiddenFilesSettings";
 import { SettingsSection } from "@/components/SettingsSection";
 import { Toolbar } from "@/components/Toolbar";
 import { Button } from "@/components/ui/button";
@@ -42,6 +43,8 @@ import { isImageFileName } from "@/lib/image-file";
 import { cn } from "@/lib/utils";
 import { publishVaults, rememberedVaults, subscribeVaults, type Vault } from "@/lib/vault-list";
 import { parseFrontmatterFields, splitMarkdownFrontmatter, type FrontmatterField } from "@/lib/frontmatter";
+import { listedEntryVisible } from "@/lib/hidden-files";
+import { useHiddenPrefs } from "@/lib/hidden-prefs";
 import { propertiesUseSheet } from "@/lib/properties-layout";
 import { listScrollKey, readListScroll, writeListScroll } from "@/lib/session-list-scroll";
 import { THREAD_VAULT_ACTION_ID } from "@/lib/panel-open";
@@ -534,9 +537,14 @@ function DocsReaderPanel({
       fields: split.frontmatter === null ? [] : parseFrontmatterFields(split.frontmatter),
     };
   }, [doc, index, previewBaseUrl]);
+  const hiddenPrefs = useHiddenPrefs();
+  const shownIndex = useMemo(
+    () => index.filter((entry) => listedEntryVisible(entry.path, hiddenPrefs)),
+    [hiddenPrefs, index],
+  );
   const treeRows = useMemo(
-    () => visibleTreeRows(index, expandedFolders, query),
-    [expandedFolders, index, query],
+    () => visibleTreeRows(shownIndex, expandedFolders, query),
+    [expandedFolders, query, shownIndex],
   );
   const showList = !compact || !viewingFile;
   const propsSheet = propertiesUseSheet({ compact, coarsePointer });
@@ -1174,6 +1182,13 @@ export default definePluginApp((app) => {
     title: "볼트",
     description: "패널에 보여줄 폴더를 넣고, 끌어다 놓아 순서를 바꿉니다.",
     component: SettingsSection,
+  });
+
+  app.slots.settingsSection({
+    id: "hidden-files",
+    title: "숨김 파일",
+    description: "점으로 시작하는 파일과 폴더를 숨깁니다. 다른 이름도 더할 수 있습니다.",
+    component: HiddenFilesSettings,
   });
 
   app.slots.messageDirective({ id: "vault-file", component: VaultFileDirective });
