@@ -83,18 +83,21 @@ describe("hidden vault names", () => {
     assert.doesNotMatch(button, /top-2 left-2/);
   });
 
-  it("draws the vault mark with straight facets only", () => {
+  it("draws the vault mark as a quartz point with facet holes", () => {
     const svg = readFileSync(new URL("../assets/icon.svg", import.meta.url), "utf8");
     const brand = readFileSync(new URL("../components/BrandIcon.tsx", import.meta.url), "utf8");
     const data = (source: string) => [...source.matchAll(/\bd="([^"]+)"/g)].map((match) => match[1]);
     const paths = data(svg);
     assert.deepEqual(data(brand), paths);
-    assert.ok(paths.length >= 2);
-    for (const path of paths) {
-      assert.match(path, /^[MLHVZ0-9.\s-]+$/);
-    }
-    assert.match(svg, /stroke-width="1\.5"/);
-    assert.doesNotMatch(svg, /stroke-linecap="round"/);
-    assert.doesNotMatch(brand, /strokeLinecap="round"/);
+    assert.equal(paths.length, 1);
+    const path = paths[0];
+    assert.match(path, /^[MLHVZ0-9.\s-]+$/);
+    assert.equal((path.match(/M/g) ?? []).length, 3);
+    assert.match(svg, /fill="#000"/);
+    assert.match(svg, /fill-rule="evenodd"/);
+    assert.match(brand, /fill="currentColor"/);
+    assert.match(brand, /fillRule="evenodd"/);
+    assert.doesNotMatch(svg, /stroke/);
+    assert.doesNotMatch(brand, /stroke/);
   });
 });

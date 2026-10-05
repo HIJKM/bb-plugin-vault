@@ -2,16 +2,9 @@ export function BrandIcon({ className }: { className?: string }) {
   return (
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" className={className} aria-hidden>
       <path
-        d="M8.5 5.25H15.5L20.25 12L12 20.25L3.75 12Z"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinejoin="miter"
-      />
-      <path
-        d="M3.75 12H20.25"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinejoin="miter"
+        fill="currentColor"
+        fillRule="evenodd"
+        d="M14.54 1.85L20.21 17.08L17.22 22.30L7.67 22.30L3.79 13.49L6.33 7.52ZM7.63 8.28L11.39 13.70L15.80 13.70L15.80 10.60L13.01 10.60L10.17 6.52ZM14.48 15.59L17.13 18.19L19.17 16.11L16.52 13.51Z"
       />
     </svg>
   );

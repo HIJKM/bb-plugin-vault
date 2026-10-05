@@ -1,5 +1,4 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none">
-  <!-- Cut gem. One stroke weight, outline plus the girdle. -->
-  <path stroke="#000" stroke-width="1.5" stroke-linejoin="miter" d="M8.5 5.25H15.5L20.25 12L12 20.25L3.75 12Z"/>
-  <path stroke="#000" stroke-width="1.5" stroke-linejoin="miter" d="M3.75 12H20.25"/>
+  <!-- Quartz point. Facet gaps are holes so a mask shows the background through them. -->
+  <path fill="#000" fill-rule="evenodd" d="M14.54 1.85L20.21 17.08L17.22 22.30L7.67 22.30L3.79 13.49L6.33 7.52ZM7.63 8.28L11.39 13.70L15.80 13.70L15.80 10.60L13.01 10.60L10.17 6.52ZM14.48 15.59L17.13 18.19L19.17 16.11L16.52 13.51Z"/>
 </svg>
