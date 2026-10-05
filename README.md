@@ -1,22 +1,57 @@
-# Vault
+# bb-plugin-vault
 
-Read-only browser for markdown folders. Opens markdown as rendered text and never writes.
+<p align="center">
+  <strong>read-only markdown vaults, as a page, a thread panel, and a 3D graph.</strong>
+</p>
 
-Add vault folders in the plugin settings page, then drag to set tab order.
+<p align="center">
+  <a href="#install">install</a> · <a href="#what-it-does">what it does</a> · <a href="#related">related</a>
+</p>
 
-파일 페이지의 속성은 높이와 투명도가 함께 변하며 열리고 닫힌다. 동작 줄이기 설정에서는 바로 전환한다.
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-666666?labelColor=333333" alt="MIT license" /></a>
+</p>
 
-## 3D 그래프
+---
 
-그래프에서 노트와 위키 링크를 입체적으로 탐색할 수 있다.
+A BB plugin that browses markdown folders and never writes. Add vault folders in Settings, then drag to set tab order.
 
-- 드래그하면 현재 화면을 기준으로 상하좌우 자유롭게 회전한다. 노트를 클릭하거나 탭하면 점에서 연결선이 먼저 그려지고, 선 끝에서 정보 콜아웃이 나타난다. 이름·경로·연결된 노트 수를 확인하고 `파일 열기` 버튼으로 문서를 연다. 동작 줄이기 설정에서는 애니메이션 없이 바로 표시한다.
-- 노드에 마우스를 올리면 연결된 간선이 그 점에서 이웃 노드 방향으로 240ms 동안 그려진다. 같은 점에 머무르면 반복하지 않고, 다른 점으로 옮기거나 나갔다 돌아오면 다시 그린다. 선택한 노드가 있어도 이 연결을 확인할 수 있으며, 선택한 노드의 기존 간선과 정보 콜아웃은 유지한다. 회전·이동·확대 또는 마우스 이탈 시 hover 효과를 정리하고, 동작 줄이기 설정에서는 간선을 바로 표시한다.
-- 이름은 현재 시점에서 가장 가까운 노트 3개만 점과 선으로 연결된 작은 콜아웃으로 표시하고, 해당 점에는 바깥 원을 두른다. 노트를 클릭해 선택한 동안에는 다른 노트의 이름 콜아웃을 숨기고, 빈 공간을 탭해 선택을 해제하면 다시 표시한다. 회전하면 표시 대상도 바뀐다. 새 이름이 나타날 때마다 선이 먼저 그려지고 이름이 뒤따라 나타난다. 계속 보이는 이름은 애니메이션을 반복하지 않는다. 이름끼리 겹치거나 화면 밖으로 나가지 않도록 배치하고, 공간이 부족한 이름은 생략한다.
-- 정보 콜아웃은 연결선 끝에서 살짝 커지며 선명해지고, 닫힐 때는 작아지며 흐려진 뒤 사라진다. 회전·확대·이동·시점 초기화 중에도 선택과 정보 콜아웃을 유지하고, 연결선은 선택한 점을 따라간다. `Escape`·닫기 버튼은 정보만 닫고 선택을 유지한다. 빈 공간을 탭하면 선택과 정보를 해제해 그래프를 열었던 파일 강조로 돌아간다. 다른 노트를 연달아 누르면 이전 콜아웃이 사라진 뒤 마지막으로 누른 노트의 연결선과 정보가 나타난다.
-- 휠·핀치 또는 `+`/`−` 버튼으로 최대 8배까지 확대·축소한다. `Shift`+드래그 또는 두 손가락 이동으로 화면을 옮긴다.
-- `초기화`로 처음 시점으로 돌아간다. 캔버스에 키보드 초점을 두면 방향키로 회전하고 `+`/`−`, `Home`도 사용할 수 있다.
+- **page / panel** — nav panel plus a thread side-panel tab; open notes as rendered markdown
+- **graph** — 3D wiki-link graph; click a node to open the file
+- **agents** — `::vault-file` and `::vault-graph` directives open the thread panel without leaving chat
+- **reduced motion** — skips enter/leave animation when the host asks for it
 
-기본 노트는 청색 계열로 표시하고, 클릭한 노트의 점·바깥 원·정보 콜아웃 연결선·테두리는 보라색으로 구분한다. 시점에서 먼 노트는 흐리고 옅게, 가까운 노트는 진하고 선명하게 표시한다. 회전하면 깊이에 맞춰 명도·투명도·흐림이 바뀐다. 기본 이름이 표시되는 노트와 선택하거나 마우스를 올린 노트에는 바깥 원을 두른다. 노트를 클릭해 선택하면 다른 노드와 바깥 원, 간선은 더 옅게 표시하며, 선택한 노드는 선명하게 유지하고 직접 연결된 간선은 나머지 간선보다 진하게 표시한다. 이 상태는 회전하거나 정보만 닫아도 유지되고, 빈 공간을 탭해 선택을 해제하면 원래 농도로 돌아간다.
+## install
 
-추가 3D 라이브러리 없이 Canvas에 3D 좌표를 투영하고 이름 콜아웃을 그린다. 흐린 점은 작은 이미지를 미리 만들어 재사용한다. 배치와 짧은 등장 효과가 끝나거나 화면이 숨겨지면 반복 렌더링을 멈추고, 정보 콜아웃을 읽는 동안에도 배치를 멈춘다. 정보 콜아웃을 닫으면 현재 표시 상태에서 퇴장 효과를 이어가며, 사라지는 동안 클릭을 받지 않는다. `파일 열기`는 퇴장 효과를 기다리지 않고 바로 실행한다. 이름 콜아웃도 사라지면 진행 상태를 지운다. 동작 줄이기 설정에서는 모든 콜아웃을 바로 표시하고 제거한다. 모바일에서는 해상도·프레임 수를 줄이고, 느린 프레임이 반복되면 해상도를 더 낮춘다. 연결이 매우 많으면 일부 선만 표시하되 선택한 노트(선택 전에는 현재 문서)와 마우스를 올린 노트의 연결은 모두 표시한다.
+Requires [bb](https://getbb.app) with a compatible Plugin SDK (`engines` in `package.json`).
+
+From a clone:
+
+```bash
+git clone https://github.com/HIJKM/bb-plugin-vault.git
+cd bb-plugin-vault
+bb plugin install . --yes
+```
+
+Or from GitHub:
+
+```bash
+bb plugin install 'git:https://github.com/HIJKM/bb-plugin-vault.git@main' --yes
+```
+
+Plugin id: `vault`.
+
+## what it does
+
+Registers `navPanel` `docs`, `threadPanelAction`, a settings section, and message directives in `app.tsx`. Agents can also open the thread panel through plugin tools.
+
+## related
+
+| plugin | role |
+| --- | --- |
+| `codes` | workspace files and git graph |
+| `finder` | disk tree without claiming the file opener |
+
+## license
+
+MIT. See [LICENSE](LICENSE).
