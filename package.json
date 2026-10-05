@@ -14,7 +14,7 @@
     "branding": {
       "icon": "./assets/icon.svg",
       "experimental_icons": {
-        "obsidian": "./assets/obsidian-line.svg"
+        "amethyst": "./assets/icon.svg"
       }
     },
     "server": "./server.ts",

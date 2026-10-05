@@ -1156,7 +1156,7 @@ export default definePluginApp((app) => {
   app.slots.navPanel({
     id: "docs",
     title: "Vault",
-    icon: "vault/obsidian",
+    icon: "vault/amethyst",
     path: PANEL_PATH,
     component: VaultScreen,
   });
