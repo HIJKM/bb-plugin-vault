@@ -2,34 +2,33 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 
-import { PROPERTIES_SHEET_BELOW_PX, propertiesUseSheet } from "./properties-layout.ts";
+import { propertiesUseSheet } from "./properties-layout.ts";
 
 describe("properties layout", () => {
-  it("uses a bottom sheet when the content column is at or under 640px", () => {
-    assert.equal(PROPERTIES_SHEET_BELOW_PX, 640);
-    assert.equal(propertiesUseSheet(640), true);
-    assert.equal(propertiesUseSheet(639), true);
-    assert.equal(propertiesUseSheet(641), false);
-    assert.equal(propertiesUseSheet(1200), false);
+  it("rises from the bottom only on a narrow coarse pointer", () => {
+    assert.equal(propertiesUseSheet({ compact: true, coarsePointer: true }), true);
+    assert.equal(propertiesUseSheet({ compact: true, coarsePointer: false }), false);
+    assert.equal(propertiesUseSheet({ compact: false, coarsePointer: true }), false);
+    assert.equal(propertiesUseSheet({ compact: false, coarsePointer: false }), false);
   });
 
-  it("does not treat an unmeasured column as narrow", () => {
-    assert.equal(propertiesUseSheet(0), false);
-    assert.equal(propertiesUseSheet(Number.NaN), false);
-    assert.equal(propertiesUseSheet(Number.POSITIVE_INFINITY), false);
-  });
-
-  it("measures the document column and closes the sheet with an X", () => {
+  it("docks flat on the desktop and keeps the rise on the phone", () => {
     const app = readFileSync(new URL("../app.tsx", import.meta.url), "utf8");
     const panel = readFileSync(new URL("../components/FrontmatterPanel.tsx", import.meta.url), "utf8");
-    assert.match(app, /propertiesUseSheet\(contentWidth\)/);
-    assert.match(app, /detailRef\.current/);
-    assert.match(app, /clientWidth/);
-    assert.doesNotMatch(app, /propertiesUseSheet\(\s*compact/);
-    assert.doesNotMatch(app, /propertiesUseSheet\(\s*window/);
+    const dock = panel.slice(panel.indexOf("export function PropertiesDock"));
+    const dockBody = dock.slice(0, dock.indexOf("export function PropertiesSheet"));
+
+    assert.match(app, /propertiesUseSheet\(\{ compact, coarsePointer \}\)/);
+    assert.doesNotMatch(app, /contentWidth/);
+    assert.doesNotMatch(app, /vault-properties-rail/);
+    assert.match(app, /data-testid="vault-properties-dock"|<PropertiesDock/);
+    assert.match(dockBody, /data-testid="vault-properties-dock"/);
+    assert.match(dockBody, /max-h-\[66\.666%\]/);
+    assert.match(dockBody, /border-t/);
+    assert.match(dockBody, /aria-label="닫기"/);
+    assert.doesNotMatch(dockBody, /transition/);
+    assert.doesNotMatch(dockBody, /translate/);
     assert.match(panel, /data-testid="vault-properties-sheet"/);
-    assert.match(panel, /aria-label="닫기"/);
-    assert.match(panel, /name="X"/);
     assert.match(panel, /translate-y-full/);
   });
 });

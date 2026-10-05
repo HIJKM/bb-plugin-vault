@@ -151,6 +151,36 @@ function FieldValue({
   );
 }
 
+export function PropertiesDock({
+  onClose,
+  children,
+}: {
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      data-testid="vault-properties-dock"
+      role="region"
+      aria-label="속성"
+      className="flex max-h-[66.666%] min-h-0 shrink-0 flex-col border-t border-border bg-background"
+    >
+      <div className="flex h-9 shrink-0 items-center gap-2 pr-1 pl-3">
+        <span className={cn("min-w-0 flex-1 font-medium", COARSE_POINTER_HEADER_TITLE_CLASS)}>속성</span>
+        <button
+          type="button"
+          aria-label="닫기"
+          className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-state-hover hover:text-foreground"
+          onClick={onClose}
+        >
+          <Icon name="X" className="size-3.5" />
+        </button>
+      </div>
+      <div className="min-h-0 overflow-y-auto">{children}</div>
+    </div>
+  );
+}
+
 export function PropertiesSheet({
   onClose,
   children,

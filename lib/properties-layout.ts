@@ -1,7 +1,7 @@
-/** Document column width, excluding the file list, at or under which properties rise from the bottom. */
-export const PROPERTIES_SHEET_BELOW_PX = 640;
-
-export function propertiesUseSheet(contentWidth: number): boolean {
-  if (!Number.isFinite(contentWidth) || contentWidth <= 0) return false;
-  return contentWidth <= PROPERTIES_SHEET_BELOW_PX;
+/** The rising sheet is a phone. A narrow fine pointer stays the desktop dock. */
+export function propertiesUseSheet(input: {
+  compact: boolean;
+  coarsePointer: boolean;
+}): boolean {
+  return input.compact && input.coarsePointer;
 }

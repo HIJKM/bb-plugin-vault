@@ -19,7 +19,7 @@ import { useAgentSnapshot } from "@/components/use-agent-entry";
 import { VaultFileDirective, VaultGraphDirective } from "@/components/VaultDirective";
 import { DocViewToggle, type DocViewMode } from "@/components/DocViewToggle";
 import { DocumentEndSpace } from "@/components/DocumentEndSpace";
-import { FrontmatterPanel, PropertiesSheet, readFrontmatterOpen, storeFrontmatterOpen } from "@/components/FrontmatterPanel";
+import { FrontmatterPanel, PropertiesDock, PropertiesSheet, readFrontmatterOpen, storeFrontmatterOpen } from "@/components/FrontmatterPanel";
 import { ImagePreview } from "@/components/ImagePreview";
 import { SettingsSection } from "@/components/SettingsSection";
 import { Toolbar } from "@/components/Toolbar";
@@ -36,6 +36,7 @@ import {
   COARSE_POINTER_TREE_ROW_SIZE_CLASS,
 } from "@/components/ui/coarse-pointer-sizing";
 import { useIsCompactViewport } from "@/components/ui/hooks/use-compact-viewport";
+import { useMediaQuery } from "@/components/ui/hooks/use-media-query";
 import { consumeAgentRoute, consumeGraphOpen } from "@/lib/agent-entry";
 import { isImageFileName } from "@/lib/image-file";
 import { cn } from "@/lib/utils";
@@ -306,6 +307,7 @@ function DocsReaderPanel({
   const rpc = useRpc<typeof rpcContract>();
   const navigate = useBbNavigate();
   const compact = useIsCompactViewport();
+  const coarsePointer = useMediaQuery("(pointer: coarse)");
   const route = decodeRoute(subPath);
   const [listWidth, setListWidth] = useState(readStoredListWidth);
   const [listCollapsed, setListCollapsed] = useState(readListCollapsed);
@@ -314,8 +316,6 @@ function DocsReaderPanel({
   const resizeDrag = useRef<{ startX: number; startWidth: number; max: number } | null>(null);
   const graphSplitDrag = useRef<{ startY: number; startSplit: number; height: number } | null>(null);
   const listScrollerRef = useRef<HTMLDivElement>(null);
-  const detailRef = useRef<HTMLDivElement>(null);
-  const [contentWidth, setContentWidth] = useState(0);
 
   const applyListWidth = useCallback((width: number, max?: number) => {
     const next = clampListWidth(width, max);
@@ -539,21 +539,7 @@ function DocsReaderPanel({
     [expandedFolders, index, query],
   );
   const showList = !compact || !viewingFile;
-  const detailShown = !graphOpen && (!compact || viewingFile);
-  const propsSheet = propertiesUseSheet(contentWidth);
-  useLayoutEffect(() => {
-    if (!detailShown) return;
-    const node = detailRef.current;
-    if (node === null) return;
-    const apply = () => {
-      const next = node.clientWidth;
-      setContentWidth((current) => (current === next ? current : next));
-    };
-    apply();
-    const observer = new ResizeObserver(apply);
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, [detailShown]);
+  const propsSheet = propertiesUseSheet({ compact, coarsePointer });
 
   useEffect(() => {
     setExpandedFolders(new Set());
@@ -866,7 +852,7 @@ function DocsReaderPanel({
   }
 
   const detailPane = (
-    <div ref={detailRef} className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+    <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
       {compact && viewingFile ? (
         <div className="flex items-center gap-2 border-b border-border px-3 py-2">
           <Button
@@ -967,27 +953,19 @@ function DocsReaderPanel({
               {!(doc.kind === "html" && viewMode === "preview") ? <DocumentEndSpace /> : null}
             </div>
             )}
-            {showProps && !propsSheet ? (
-              <aside
-                data-testid="vault-properties-rail"
-                className={cn("relative h-full shrink-0 overflow-hidden", PANEL_WIDTH_MOTION)}
-                style={{ width: propsOpen ? "14rem" : 0 }}
-                aria-hidden={!propsOpen}
-                inert={!propsOpen}
-              >
-                <div className="absolute inset-y-0 right-0 w-56 overflow-y-auto border-l border-border">
-                  <FrontmatterPanel
-                    fields={markdown.fields}
-                    docPath={doc.path}
-                    index={index}
-                    vaultId={vaultId}
-                    rawByHash={rawArchive}
-                    onOpen={goTo}
-                  />
-                </div>
-              </aside>
-            ) : null}
           </div>
+          {showProps && !propsSheet && propsOpen ? (
+            <PropertiesDock onClose={() => setPropertiesOpen(false)}>
+              <FrontmatterPanel
+                fields={markdown.fields}
+                docPath={doc.path}
+                index={index}
+                vaultId={vaultId}
+                rawByHash={rawArchive}
+                onOpen={goTo}
+              />
+            </PropertiesDock>
+          ) : null}
           {showProps && propsSheet && propsOpen ? (
             <PropertiesSheet onClose={() => setPropertiesOpen(false)}>
               <FrontmatterPanel
