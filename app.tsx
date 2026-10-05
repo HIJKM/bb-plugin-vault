@@ -759,6 +759,7 @@ function DocsReaderPanel({
         onQueryChange={setQuery}
         filterFocusTick={filterFocusTick}
         graphOpen={graphPeek}
+        onOpenGraph={compact ? () => setGraphOpen(true) : undefined}
         onToggleGraph={compact ? undefined : () => setGraphPeek((open) => !open)}
         vaults={vaults}
         vaultId={vaultId}
