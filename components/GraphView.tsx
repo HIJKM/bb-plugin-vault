@@ -1023,7 +1023,7 @@ export function GraphView({
   useEffect(() => { controlsRef.current?.redraw(); }, [highlightKey]);
 
   return (
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+    <div data-no-sidebar-swipe="" className="flex min-h-0 min-w-0 flex-1 flex-col">
       <div ref={wrapRef} className="relative min-h-0 min-w-0 flex-1 overscroll-none">
         {nodes.length === 0 ? (
           <p className={cn("p-6 text-muted-foreground", COARSE_POINTER_TEXT_BASE_CLASS)}>이 볼트에 노트가 없습니다.</p>
