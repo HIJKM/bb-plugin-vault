@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
-import { COARSE_POINTER_TEXT_SM_CLASS } from "@/components/ui/coarse-pointer-sizing";
+import { COARSE_POINTER_HEADER_TITLE_CLASS } from "@/components/ui/coarse-pointer-sizing";
 import { Icon } from "@/components/ui/icon";
 import { usePortalScopeProps } from "@/lib/portal-scope";
 import { cn } from "@/lib/utils";
@@ -74,8 +74,8 @@ export function Breadcrumbs({
         aria-expanded={canPickVault ? menuOpen : undefined}
         aria-controls={canPickVault && menuOpen ? menuId : undefined}
         className={cn(
-          "flex h-7 items-center gap-1 rounded-md px-1.5 font-semibold whitespace-nowrap text-foreground hover:bg-state-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring max-md:pointer-coarse:h-9",
-          COARSE_POINTER_TEXT_SM_CLASS,
+          "flex h-7 items-center gap-1 rounded-md px-1.5 font-semibold whitespace-nowrap text-foreground hover:bg-state-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring max-md:pointer-coarse:h-8",
+          COARSE_POINTER_HEADER_TITLE_CLASS,
         )}
         onClick={() => {
           if (canPickVault) setMenuOpen((open) => !open);
@@ -105,8 +105,8 @@ export function Breadcrumbs({
                     role="option"
                     aria-selected={selected}
                     className={cn(
-                      "flex h-7 w-full items-center rounded-md px-2 text-left max-md:pointer-coarse:h-9",
-                      COARSE_POINTER_TEXT_SM_CLASS,
+                      "flex h-7 w-full items-center rounded-md px-2 text-left max-md:pointer-coarse:h-8",
+                      COARSE_POINTER_HEADER_TITLE_CLASS,
                       selected ? "bg-accent text-accent-foreground" : "hover:bg-state-hover",
                     )}
                     onClick={() => {

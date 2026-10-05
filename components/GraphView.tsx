@@ -86,7 +86,7 @@ export function GraphHelp() {
           if (coarse) setOpen((value) => !value);
         }}
       >
-        <Icon name="Info" className="size-3.5 max-md:pointer-coarse:size-5" />
+        <Icon name="Info" className="size-3.5 max-md:pointer-coarse:size-4" />
       </button>
       {open ? (
         <p
@@ -1056,7 +1056,7 @@ export function GraphView({
                   aria-label="그래프 전체화면"
                   onClick={onFullscreen}
                 >
-                  <Icon name="Maximize2" className="size-3.5 max-md:pointer-coarse:size-5" />
+                  <Icon name="Maximize2" className="size-3.5 max-md:pointer-coarse:size-4" />
                 </Button>
               </div>
             ) : null}

@@ -26,6 +26,8 @@ import { Toolbar } from "@/components/Toolbar";
 import { Button } from "@/components/ui/button";
 import { Icon, preloadExtendedIcons } from "@/components/ui/icon";
 import {
+  COARSE_POINTER_HEADER_BAR_CLASS,
+  COARSE_POINTER_HEADER_TITLE_CLASS,
   COARSE_POINTER_ICON_BUTTON_GROW_CLASS,
   COARSE_POINTER_MARKDOWN_BODY_CLASS,
   COARSE_POINTER_TEXT_BASE_CLASS,
@@ -871,13 +873,13 @@ function DocsReaderPanel({
             type="button"
             variant="ghost"
             size="sm"
-            className={cn("max-md:pointer-coarse:h-10 max-md:pointer-coarse:px-3", COARSE_POINTER_TEXT_SM_CLASS)}
+            className={cn("max-md:pointer-coarse:h-8 max-md:pointer-coarse:px-2.5", COARSE_POINTER_HEADER_TITLE_CLASS)}
             onClick={() => {
               if (vaultId === null) return;
               goTo(vaultId, listFolder);
             }}
           >
-            <Icon name="ChevronLeft" className="size-4 max-md:pointer-coarse:size-5" />
+            <Icon name="ChevronLeft" className="size-4 max-md:pointer-coarse:size-4" />
             목록
           </Button>
           <span className="min-w-0 flex-1" />
@@ -909,16 +911,17 @@ function DocsReaderPanel({
         <>
           <div
             className={cn(
-              "flex h-9 shrink-0 items-center gap-2 border-b border-border pr-2 transition-[padding] duration-[420ms] ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none max-md:pointer-coarse:h-11",
+              "flex shrink-0 items-center gap-2 border-b border-border pr-2 transition-[padding] duration-[420ms] ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none",
+              COARSE_POINTER_HEADER_BAR_CLASS,
               !compact && listCollapsed ? "pl-12" : "pl-3",
             )}
           >
-            <h1 className={cn("min-w-0 flex-1 truncate font-medium", COARSE_POINTER_TEXT_BASE_CLASS)}>{fileLabel(doc.name)}</h1>
+            <h1 className={cn("min-w-0 flex-1 truncate font-medium", COARSE_POINTER_HEADER_TITLE_CLASS)}>{fileLabel(doc.name)}</h1>
             {showProps ? (
               <button
                 type="button"
                 className={cn(
-                  "inline-flex size-8 shrink-0 items-center justify-center rounded-md max-md:pointer-coarse:size-10",
+                  "inline-flex size-8 shrink-0 items-center justify-center rounded-md",
                   propsOpen
                     ? "bg-state-active text-foreground"
                     : "text-muted-foreground hover:bg-state-hover hover:text-foreground",
@@ -927,7 +930,7 @@ function DocsReaderPanel({
                 aria-label="속성"
                 onClick={() => setPropertiesOpen(!propsOpen)}
               >
-                <Icon name="SlidersHorizontal" className="size-3.5 max-md:pointer-coarse:size-5" />
+                <Icon name="SlidersHorizontal" className="size-3.5 max-md:pointer-coarse:size-4" />
               </button>
             ) : null}
             {doc.kind === "markdown" || doc.kind === "html" ? (
@@ -1015,13 +1018,13 @@ function DocsReaderPanel({
             type="button"
             variant="ghost"
             size="sm"
-            className={cn("max-md:pointer-coarse:h-10 max-md:pointer-coarse:px-3", COARSE_POINTER_TEXT_SM_CLASS)}
+            className={cn("max-md:pointer-coarse:h-8 max-md:pointer-coarse:px-2.5", COARSE_POINTER_HEADER_TITLE_CLASS)}
             onClick={() => setGraphOpen(false)}
           >
-            <Icon name="ChevronLeft" className="size-4 max-md:pointer-coarse:size-5" />
+            <Icon name="ChevronLeft" className="size-4 max-md:pointer-coarse:size-4" />
             닫기
           </Button>
-          <h1 className={cn("min-w-0 flex-1 truncate font-medium", COARSE_POINTER_TEXT_BASE_CLASS)}>3D 그래프</h1>
+          <h1 className={cn("min-w-0 flex-1 truncate font-medium", COARSE_POINTER_HEADER_TITLE_CLASS)}>3D 그래프</h1>
         </div>
         {loadingGraph && graph === null ? (
           <p className={cn("p-6 text-muted-foreground", COARSE_POINTER_TEXT_BASE_CLASS)}>그래프를 그리는 중…</p>

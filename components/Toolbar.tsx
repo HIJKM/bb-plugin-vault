@@ -4,7 +4,7 @@ import { createPortal } from "react-dom";
 import { PathBar } from "@/components/PathBar";
 import type { VaultChoice } from "@/components/Breadcrumbs";
 import { Button } from "@/components/ui/button";
-import { COARSE_POINTER_ICON_BUTTON_GROW_CLASS } from "@/components/ui/coarse-pointer-sizing";
+import { COARSE_POINTER_HEADER_BAR_CLASS, COARSE_POINTER_ICON_BUTTON_GROW_CLASS } from "@/components/ui/coarse-pointer-sizing";
 import { Icon } from "@/components/ui/icon";
 import { Input } from "@/components/ui/input";
 import { usePortalScopeProps } from "@/lib/portal-scope";
@@ -112,7 +112,8 @@ export function Toolbar({
     <div
       data-testid="vault-toolbar"
       className={cn(
-        "relative flex h-9 shrink-0 items-center gap-0.5 border-b border-border px-1.5 max-md:pointer-coarse:h-11",
+        "relative flex shrink-0 items-center gap-0.5 border-b border-border px-1.5",
+        COARSE_POINTER_HEADER_BAR_CLASS,
         className,
       )}
     >
@@ -195,7 +196,7 @@ export function Toolbar({
                 data-testid="vault-search"
                 aria-label="Filter this folder"
                 placeholder="Filter…"
-                className="h-8 max-md:pointer-coarse:h-10"
+                className="h-8 text-sm max-md:pointer-coarse:h-8 max-md:pointer-coarse:text-sm"
                 autoCapitalize="off"
                 autoCorrect="off"
                 spellCheck={false}

@@ -8,6 +8,7 @@ import {
 } from "@/lib/frontmatter";
 import { isRawHash, rawArchiveLabel } from "@/lib/raw-archive";
 import {
+  COARSE_POINTER_HEADER_TITLE_CLASS,
   COARSE_POINTER_TEXT_BASE_CLASS,
   COARSE_POINTER_TEXT_SM_CLASS,
 } from "@/components/ui/coarse-pointer-sizing";
@@ -174,15 +175,15 @@ export function PropertiesSheet({
         risen ? "translate-y-0" : "translate-y-full",
       )}
     >
-      <div className="flex h-10 shrink-0 items-center gap-2 border-b border-border pr-1 pl-3 max-md:pointer-coarse:h-12">
-        <span className={cn("min-w-0 flex-1 font-medium", COARSE_POINTER_TEXT_BASE_CLASS)}>속성</span>
+      <div className="flex h-10 shrink-0 items-center gap-2 border-b border-border pr-1 pl-3">
+        <span className={cn("min-w-0 flex-1 font-medium", COARSE_POINTER_HEADER_TITLE_CLASS)}>속성</span>
         <button
           type="button"
           aria-label="닫기"
-          className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-state-hover hover:text-foreground max-md:pointer-coarse:size-10"
+          className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-state-hover hover:text-foreground"
           onClick={onClose}
         >
-          <Icon name="X" className="size-4 max-md:pointer-coarse:size-5" />
+          <Icon name="X" className="size-4" />
         </button>
       </div>
       <div className="min-h-0 overflow-y-auto">{children}</div>
