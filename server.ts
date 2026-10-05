@@ -5,6 +5,7 @@ import { DatabaseSync } from "node:sqlite";
 import { defineRpcContract, type BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 
+import { registerVaultAgentTools } from "./lib/agent-tools";
 import { buildNoteGraph } from "./lib/note-graph";
 import { joinPreviewUrl } from "./lib/preview-url";
 import { parseRawArchiveJsonl, RAW_ARCHIVE_RELATIVE } from "./lib/raw-archive";
@@ -449,6 +450,11 @@ export default async function plugin(bb: BbPluginApi) {
     }
     return cached;
   }
+
+  registerVaultAgentTools(bb, {
+    loadVaults: () => loadVaults(),
+    listEntries: async (vaultId) => listVaultEntries(await vaultById(vaultId)),
+  });
 
   bb.rpc.register(rpcContract, {
     async listVaults() {

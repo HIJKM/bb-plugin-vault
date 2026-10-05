@@ -1,17 +1,22 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentType, type KeyboardEvent, type MouseEvent, type PointerEvent } from "react";
 import {
   Markdown,
   definePluginApp,
   experimental_SourceCode as SourceCode,
   useBbNavigate,
   useRpc,
+  type PluginAppSlots,
   type PluginNavPanelProps,
+  type PluginThreadPanelProps,
 } from "@get-bb/plugin-sdk/app";
 import { toast } from "sonner";
 
 import { BrandIcon } from "@/components/BrandIcon";
 import { GraphView } from "@/components/GraphView";
+import { PanelOpenBridge } from "@/components/PanelOpenBridge";
 import { withPanelSplash } from "@/components/PanelSplash";
+import { useAgentSnapshot } from "@/components/use-agent-entry";
+import { VaultFileDirective, VaultGraphDirective } from "@/components/VaultDirective";
 import { DocViewToggle, type DocViewMode } from "@/components/DocViewToggle";
 import { DocumentEndSpace } from "@/components/DocumentEndSpace";
 import { FrontmatterPanel, readFrontmatterOpen, storeFrontmatterOpen } from "@/components/FrontmatterPanel";
@@ -21,11 +26,13 @@ import { Toolbar } from "@/components/Toolbar";
 import { Button } from "@/components/ui/button";
 import { Icon, preloadExtendedIcons } from "@/components/ui/icon";
 import { useIsCompactViewport } from "@/components/ui/hooks/use-compact-viewport";
+import { consumeAgentRoute, consumeGraphOpen } from "@/lib/agent-entry";
 import { isImageFileName } from "@/lib/image-file";
 import { cn } from "@/lib/utils";
 import { publishVaults, rememberedVaults, subscribeVaults, type Vault } from "@/lib/vault-list";
 import { parseFrontmatterFields, splitMarkdownFrontmatter, type FrontmatterField } from "@/lib/frontmatter";
 import { listScrollKey, readListScroll, writeListScroll } from "@/lib/session-list-scroll";
+import { THREAD_VAULT_ACTION_ID } from "@/lib/panel-open";
 import { readSessionRoute, writeSessionRoute } from "@/lib/session-route";
 import { rewriteVaultMarkdown } from "@/lib/vault-markdown";
 import type { GraphEdge, GraphNode } from "@/lib/note-graph";
@@ -46,6 +53,7 @@ const GRAPH_SPLIT_MAX = 0.8;
 const GRAPH_SPLIT_STEP = 0.04;
 const PANEL_WIDTH_MOTION =
   "transition-[width] duration-[420ms] ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none";
+const EMPTY_HIGHLIGHTS: readonly string[] = [];
 
 function clampListWidth(width: number, max = LIST_WIDTH_MAX): number {
   const ceiling = Math.max(LIST_WIDTH_MIN, max);
@@ -280,7 +288,10 @@ function childrenOf(entries: readonly DocEntry[], folder: string): DocEntry[] {
   return [...folders, ...files];
 }
 
-function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
+function DocsReaderPanel({
+  subPath,
+  onRoute,
+}: PluginNavPanelProps & { onRoute?: (subPath: string) => void }) {
   const rpc = useRpc<typeof rpcContract>();
   const navigate = useBbNavigate();
   const compact = useIsCompactViewport();
@@ -414,9 +425,13 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
   const [expandedFolders, setExpandedFolders] = useState<ReadonlySet<string>>(() => new Set());
   const [graph, setGraph] = useState<{ nodes: GraphNode[]; edges: GraphEdge[] } | null>(null);
   const [loadingGraph, setLoadingGraph] = useState(false);
+  const agent = useAgentSnapshot();
+  const loadedVaultRef = useRef<string | null>(null);
+  const appliedNonceRef = useRef("");
 
   const vaultId = route.vaultId ?? vaults[0]?.id ?? null;
   const activePath = route.path;
+  const highlightPaths = vaultId === null ? EMPTY_HIGHLIGHTS : agent.lights[vaultId] ?? EMPTY_HIGHLIGHTS;
 
   useEffect(() => {
     setViewMode("preview");
@@ -427,9 +442,40 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
   }, []);
 
   useEffect(() => {
-    setGraph(null);
-    setGraphOpen(false);
-  }, [vaultId]);
+    const pending = consumeAgentRoute();
+    if (pending?.action === "file") {
+      appliedNonceRef.current = agent.entry?.nonce ?? appliedNonceRef.current;
+      setGraphOpen(false);
+      goToRef.current(pending.vaultId, pending.path);
+      return;
+    }
+    if (pending?.action === "graph" && pending.vaultId !== vaultId) {
+      goToRef.current(pending.vaultId, "");
+      return;
+    }
+    const switchedVault = loadedVaultRef.current !== vaultId;
+    if (switchedVault) {
+      loadedVaultRef.current = vaultId;
+      setGraph(null);
+    }
+    const current = agent.entry;
+    if (current?.action === "graph" && current.vaultId === vaultId) {
+      const fresh = consumeGraphOpen(vaultId);
+      if (fresh || (!switchedVault && current.nonce !== appliedNonceRef.current)) {
+        appliedNonceRef.current = current.nonce;
+        setGraphOpen(true);
+        return;
+      }
+      if (switchedVault) setGraphOpen(false);
+      return;
+    }
+    if (current?.action === "file" && current.vaultId === vaultId && current.nonce !== appliedNonceRef.current) {
+      appliedNonceRef.current = current.nonce;
+      setGraphOpen(false);
+      return;
+    }
+    if (switchedVault) setGraphOpen(false);
+  }, [agent.entry, vaultId]);
 
   useEffect(() => {
     if ((!graphOpen && !graphPeek) || vaultId === null || graph !== null) return;
@@ -514,13 +560,20 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
 
   const goTo = useCallback(
     (nextVault: string, nextPath: string, replace = false) => {
+      const encoded = encodeRoute(nextVault, nextPath);
+      if (onRoute !== undefined) {
+        onRoute(encoded);
+        return;
+      }
       navigate.toPluginPanel(PANEL_PATH, {
-        subPath: encodeRoute(nextVault, nextPath),
+        subPath: encoded,
         replace,
       });
     },
-    [navigate],
+    [navigate, onRoute],
   );
+  const goToRef = useRef(goTo);
+  goToRef.current = goTo;
 
   const onWikiClick = useCallback(
     (event: MouseEvent<HTMLDivElement>) => {
@@ -927,6 +980,7 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
             nodes={graph?.nodes ?? []}
             edges={graph?.edges ?? []}
             activePath={activePath}
+            highlightPaths={highlightPaths}
             onOpen={(path) => {
               if (vaultId === null) return;
               setGraphOpen(false);
@@ -1004,6 +1058,7 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
                       nodes={graph?.nodes ?? []}
                       edges={graph?.edges ?? []}
                       activePath={activePath}
+                      highlightPaths={highlightPaths}
                       onFullscreen={() => setGraphOpen(true)}
                       onOpen={(path) => {
                         if (vaultId === null) return;
@@ -1059,13 +1114,28 @@ function DocsReaderPanel({ subPath }: PluginNavPanelProps) {
   );
 }
 
+const VaultScreen = withPanelSplash("Vault", <BrandIcon className="size-9" />, DocsReaderPanel);
+
+function ThreadVaultPanel(_props: PluginThreadPanelProps) {
+  const [subPath, setSubPath] = useState(readSessionRoute);
+  return <VaultScreen subPath={subPath} onRoute={setSubPath} />;
+}
+
 export default definePluginApp((app) => {
   app.slots.navPanel({
     id: "docs",
     title: "Vault",
     icon: "FileText",
     path: PANEL_PATH,
-    component: withPanelSplash("Vault", <BrandIcon className="size-9" />, DocsReaderPanel),
+    component: VaultScreen,
+  });
+
+  app.slots.threadPanelAction({
+    id: THREAD_VAULT_ACTION_ID,
+    title: "Vault",
+    icon: "FileText",
+    layout: "flush",
+    component: ThreadVaultPanel,
   });
 
   app.slots.settingsSection({
@@ -1074,4 +1144,12 @@ export default definePluginApp((app) => {
     description: "패널에 보여줄 폴더를 넣고, 끌어다 놓아 순서를 바꿉니다.",
     component: SettingsSection,
   });
+
+  app.slots.messageDirective({ id: "vault-file", component: VaultFileDirective });
+  app.slots.messageDirective({ id: "vault-graph", component: VaultGraphDirective });
+
+  const slots = app.slots as PluginAppSlots & {
+    experimental_appOverlay?: (registration: { id: string; component: ComponentType }) => void;
+  };
+  slots.experimental_appOverlay?.({ id: "panel-open", component: PanelOpenBridge });
 });

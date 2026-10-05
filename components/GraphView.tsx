@@ -32,6 +32,7 @@ import {
   placeGraphCallout,
   type CalloutRect,
 } from "@/lib/graph-callouts";
+import { graphLabelHidden, graphNodeEmphasis, highlightedNodeIndices } from "@/lib/graph-highlight";
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 const SELECTED_NODE_COLOR = "#8b5cf6";
@@ -96,6 +97,7 @@ export function GraphView({
   onOpen,
   onFullscreen,
   variant = "full",
+  highlightPaths = [],
 }: {
   nodes: GraphNode[];
   edges: GraphEdge[];
@@ -103,6 +105,7 @@ export function GraphView({
   onOpen: (path: string) => void;
   onFullscreen?: () => void;
   variant?: "full" | "local";
+  highlightPaths?: readonly string[];
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -114,8 +117,20 @@ export function GraphView({
   const infoExitingRef = useRef(false);
   const infoFocusRef = useRef(false);
   const controlsRef = useRef<Controls | null>(null);
-  const propsRef = useRef({ activePath, onOpen, local: variant === "local", mini: onFullscreen !== undefined });
-  propsRef.current = { activePath, onOpen, local: variant === "local", mini: onFullscreen !== undefined };
+  const propsRef = useRef({
+    activePath,
+    onOpen,
+    local: variant === "local",
+    mini: onFullscreen !== undefined,
+    highlightPaths,
+  });
+  propsRef.current = {
+    activePath,
+    onOpen,
+    local: variant === "local",
+    mini: onFullscreen !== undefined,
+    highlightPaths,
+  };
   const helpId = useId();
   const [info, setInfo] = useState<(GraphNode & { connections: number; color: string }) | null>(null);
 
@@ -528,6 +543,7 @@ export function GraphView({
       ctx!.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx!.clearRect(0, 0, width, height);
       const active = selected >= 0 ? selected : indices.get(propsRef.current.activePath) ?? -1;
+      const highlights = highlightedNodeIndices(nodes, propsRef.current.highlightPaths);
       if (selected !== focusedNode) {
         focusedNode = selected;
         focusedEdges = selected < 0 ? [] : layout.edges.filter(({ from, to }) => from === selected || to === selected);
@@ -568,11 +584,43 @@ export function GraphView({
       for (const index of order) {
         const point = projected[index];
         if (!point.visible) continue;
-        const focused = index === active || index === hover || closest.includes(index);
         const appearance = graphDepthAppearance(point.depth);
-        const color = index === selected ? SELECTED_NODE_COLOR : appearance.color;
-        const sprite = focused ? undefined : depthSprites.get(appearance.color);
-        ctx!.globalAlpha = (focused ? 1 : appearance.opacity) * (selected >= 0 && index !== selected ? 0.28 : 1);
+        const emphasis = graphNodeEmphasis({
+          index,
+          selected,
+          marked: highlights.has(index),
+          focused: index === active || index === hover || closest.includes(index),
+          appearance,
+          selectedColor: SELECTED_NODE_COLOR,
+        });
+        if (emphasis.glow) {
+          const nodeRadius = radius(index);
+          const glowRadius = Math.max(18, nodeRadius * 9);
+          const gradient = ctx!.createRadialGradient(
+            point.x,
+            point.y,
+            nodeRadius * 0.4,
+            point.x,
+            point.y,
+            glowRadius,
+          );
+          gradient.addColorStop(0, "rgba(255, 77, 77, 0.95)");
+          gradient.addColorStop(0.42, "rgba(255, 77, 77, 0.55)");
+          gradient.addColorStop(1, "rgba(255, 77, 77, 0)");
+          ctx!.globalAlpha = 1;
+          ctx!.fillStyle = gradient;
+          ctx!.beginPath();
+          ctx!.arc(point.x, point.y, glowRadius, 0, Math.PI * 2);
+          ctx!.fill();
+          ctx!.fillStyle = emphasis.color;
+          ctx!.beginPath();
+          ctx!.arc(point.x, point.y, Math.max(nodeRadius, 2.4), 0, Math.PI * 2);
+          ctx!.fill();
+          continue;
+        }
+        const color = emphasis.color;
+        const sprite = emphasis.ring ? undefined : depthSprites.get(appearance.color);
+        ctx!.globalAlpha = emphasis.alpha;
         if (sprite) {
           const size = sprite.size * radius(index) / 2;
           ctx!.drawImage(sprite.image, point.x - size / 2, point.y - size / 2, size, size);
@@ -582,7 +630,7 @@ export function GraphView({
           ctx!.arc(point.x, point.y, radius(index), 0, Math.PI * 2);
           ctx!.fill();
         }
-        if (focused) {
+        if (emphasis.ring) {
           ctx!.strokeStyle = color;
           ctx!.lineWidth = 1;
           ctx!.beginPath();
@@ -597,7 +645,7 @@ export function GraphView({
       const shownLabels = new Set<number>();
       let labelsAnimating = false;
       function label(index: number) {
-        if (index === infoIndex || (selected >= 0 && index !== selected)) return;
+        if (graphLabelHidden(index, infoIndex, selected)) return;
         const point = projected[index];
         let text = labelText.get(index);
         if (!text) {
@@ -960,6 +1008,8 @@ export function GraphView({
   }, [nodes, edges]);
 
   useEffect(() => { controlsRef.current?.focusPath(activePath); }, [activePath]);
+  const highlightKey = highlightPaths.join("\0");
+  useEffect(() => { controlsRef.current?.redraw(); }, [highlightKey]);
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
