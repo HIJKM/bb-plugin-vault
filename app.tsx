@@ -19,7 +19,7 @@ import { useAgentSnapshot } from "@/components/use-agent-entry";
 import { VaultFileDirective, VaultGraphDirective } from "@/components/VaultDirective";
 import { DocViewToggle, type DocViewMode } from "@/components/DocViewToggle";
 import { DocumentEndSpace } from "@/components/DocumentEndSpace";
-import { FrontmatterPanel, readFrontmatterOpen, storeFrontmatterOpen } from "@/components/FrontmatterPanel";
+import { FrontmatterPanel, PropertiesSheet, readFrontmatterOpen, storeFrontmatterOpen } from "@/components/FrontmatterPanel";
 import { ImagePreview } from "@/components/ImagePreview";
 import { SettingsSection } from "@/components/SettingsSection";
 import { Toolbar } from "@/components/Toolbar";
@@ -39,6 +39,7 @@ import { isImageFileName } from "@/lib/image-file";
 import { cn } from "@/lib/utils";
 import { publishVaults, rememberedVaults, subscribeVaults, type Vault } from "@/lib/vault-list";
 import { parseFrontmatterFields, splitMarkdownFrontmatter, type FrontmatterField } from "@/lib/frontmatter";
+import { propertiesUseSheet } from "@/lib/properties-layout";
 import { listScrollKey, readListScroll, writeListScroll } from "@/lib/session-list-scroll";
 import { THREAD_VAULT_ACTION_ID } from "@/lib/panel-open";
 import { readSessionRoute, writeSessionRoute } from "@/lib/session-route";
@@ -311,6 +312,8 @@ function DocsReaderPanel({
   const resizeDrag = useRef<{ startX: number; startWidth: number; max: number } | null>(null);
   const graphSplitDrag = useRef<{ startY: number; startSplit: number; height: number } | null>(null);
   const listScrollerRef = useRef<HTMLDivElement>(null);
+  const detailRef = useRef<HTMLDivElement>(null);
+  const [contentWidth, setContentWidth] = useState(0);
 
   const applyListWidth = useCallback((width: number, max?: number) => {
     const next = clampListWidth(width, max);
@@ -534,6 +537,21 @@ function DocsReaderPanel({
     [expandedFolders, index, query],
   );
   const showList = !compact || !viewingFile;
+  const detailShown = !graphOpen && (!compact || viewingFile);
+  const propsSheet = propertiesUseSheet(contentWidth);
+  useLayoutEffect(() => {
+    if (!detailShown) return;
+    const node = detailRef.current;
+    if (node === null) return;
+    const apply = () => {
+      const next = node.clientWidth;
+      setContentWidth((current) => (current === next ? current : next));
+    };
+    apply();
+    const observer = new ResizeObserver(apply);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [detailShown]);
 
   useEffect(() => {
     setExpandedFolders(new Set());
@@ -839,8 +857,14 @@ function DocsReaderPanel({
     </div>
   );
 
+  const showProps = doc !== null && doc.kind === "markdown" && viewMode === "preview" && markdown.fields.length > 0;
+  function setPropertiesOpen(open: boolean) {
+    setPropsOpen(open);
+    storeFrontmatterOpen(open);
+  }
+
   const detailPane = (
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+    <div ref={detailRef} className="relative flex min-h-0 min-w-0 flex-1 flex-col">
       {compact && viewingFile ? (
         <div className="flex items-center gap-2 border-b border-border px-3 py-2">
           <Button
@@ -890,7 +914,7 @@ function DocsReaderPanel({
             )}
           >
             <h1 className={cn("min-w-0 flex-1 truncate font-medium", COARSE_POINTER_TEXT_BASE_CLASS)}>{fileLabel(doc.name)}</h1>
-            {doc.kind === "markdown" && viewMode === "preview" && markdown.fields.length > 0 ? (
+            {showProps ? (
               <button
                 type="button"
                 className={cn(
@@ -901,11 +925,7 @@ function DocsReaderPanel({
                 )}
                 aria-pressed={propsOpen}
                 aria-label="속성"
-                onClick={() => {
-                  const next = !propsOpen;
-                  setPropsOpen(next);
-                  storeFrontmatterOpen(next);
-                }}
+                onClick={() => setPropertiesOpen(!propsOpen)}
               >
                 <Icon name="SlidersHorizontal" className="size-3.5 max-md:pointer-coarse:size-5" />
               </button>
@@ -944,8 +964,9 @@ function DocsReaderPanel({
               {!(doc.kind === "html" && viewMode === "preview") ? <DocumentEndSpace /> : null}
             </div>
             )}
-            {doc.kind === "markdown" && viewMode === "preview" && markdown.fields.length > 0 ? (
+            {showProps && !propsSheet ? (
               <aside
+                data-testid="vault-properties-rail"
                 className={cn("relative h-full shrink-0 overflow-hidden", PANEL_WIDTH_MOTION)}
                 style={{ width: propsOpen ? "14rem" : 0 }}
                 aria-hidden={!propsOpen}
@@ -964,6 +985,18 @@ function DocsReaderPanel({
               </aside>
             ) : null}
           </div>
+          {showProps && propsSheet && propsOpen ? (
+            <PropertiesSheet onClose={() => setPropertiesOpen(false)}>
+              <FrontmatterPanel
+                fields={markdown.fields}
+                docPath={doc.path}
+                index={index}
+                vaultId={vaultId}
+                rawByHash={rawArchive}
+                onOpen={goTo}
+              />
+            </PropertiesSheet>
+          ) : null}
         </>
       )}
     </div>

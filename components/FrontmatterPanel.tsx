@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useState, type ReactNode } from "react";
 
 import {
   frontmatterFieldLabel,
@@ -11,6 +11,7 @@ import {
   COARSE_POINTER_TEXT_BASE_CLASS,
   COARSE_POINTER_TEXT_SM_CLASS,
 } from "@/components/ui/coarse-pointer-sizing";
+import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
 import { resolveWikiTarget, type WikiEntry } from "@/lib/wiki-links";
 
@@ -146,6 +147,46 @@ function FieldValue({
     >
       {text}
     </span>
+  );
+}
+
+export function PropertiesSheet({
+  onClose,
+  children,
+}: {
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  const [risen, setRisen] = useState(false);
+  useLayoutEffect(() => {
+    const id = requestAnimationFrame(() => setRisen(true));
+    return () => cancelAnimationFrame(id);
+  }, []);
+
+  return (
+    <div
+      data-testid="vault-properties-sheet"
+      role="region"
+      aria-label="속성"
+      className={cn(
+        "absolute inset-x-0 bottom-0 z-20 flex max-h-[45%] flex-col rounded-t-2xl border border-border bg-background shadow-[0_-12px_32px_rgb(0_0_0/0.16)] dark:shadow-[0_-12px_32px_rgb(0_0_0/0.55)]",
+        "transition-transform duration-[420ms] ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:translate-y-0 motion-reduce:transition-none",
+        risen ? "translate-y-0" : "translate-y-full",
+      )}
+    >
+      <div className="flex h-10 shrink-0 items-center gap-2 border-b border-border pr-1 pl-3 max-md:pointer-coarse:h-12">
+        <span className={cn("min-w-0 flex-1 font-medium", COARSE_POINTER_TEXT_BASE_CLASS)}>속성</span>
+        <button
+          type="button"
+          aria-label="닫기"
+          className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-state-hover hover:text-foreground max-md:pointer-coarse:size-10"
+          onClick={onClose}
+        >
+          <Icon name="X" className="size-4 max-md:pointer-coarse:size-5" />
+        </button>
+      </div>
+      <div className="min-h-0 overflow-y-auto">{children}</div>
+    </div>
   );
 }
 
