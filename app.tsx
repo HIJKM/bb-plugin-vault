@@ -25,6 +25,14 @@ import { SettingsSection } from "@/components/SettingsSection";
 import { Toolbar } from "@/components/Toolbar";
 import { Button } from "@/components/ui/button";
 import { Icon, preloadExtendedIcons } from "@/components/ui/icon";
+import {
+  COARSE_POINTER_ICON_BUTTON_GROW_CLASS,
+  COARSE_POINTER_MARKDOWN_BODY_CLASS,
+  COARSE_POINTER_TEXT_BASE_CLASS,
+  COARSE_POINTER_TEXT_SM_CLASS,
+  COARSE_POINTER_TREE_ICON_CLASS,
+  COARSE_POINTER_TREE_ROW_SIZE_CLASS,
+} from "@/components/ui/coarse-pointer-sizing";
 import { useIsCompactViewport } from "@/components/ui/hooks/use-compact-viewport";
 import { consumeAgentRoute, consumeGraphOpen } from "@/lib/agent-entry";
 import { isImageFileName } from "@/lib/image-file";
@@ -766,10 +774,10 @@ function DocsReaderPanel({
         }}
       >
         {loadingVaults || (loadingIndex && index.length === 0) ? (
-          <p className="p-4 text-sm text-muted-foreground">불러오는 중…</p>
+          <p className={cn("p-4 text-muted-foreground", COARSE_POINTER_TEXT_BASE_CLASS)}>불러오는 중…</p>
         ) : null}
         {!loadingIndex && treeRows.length === 0 ? (
-          <p className="p-4 text-sm text-muted-foreground">
+          <p className={cn("p-4 text-muted-foreground", COARSE_POINTER_TEXT_BASE_CLASS)}>
             {query.trim() ? "검색과 맞는 이름이 없습니다." : "이 볼트가 비어 있습니다."}
           </p>
         ) : null}
@@ -789,7 +797,8 @@ function DocsReaderPanel({
                   title={item.path}
                   style={{ paddingLeft: TREE_BASE + row.depth * TREE_INDENT }}
                   className={cn(
-                    "relative flex h-6 w-full min-w-0 items-center gap-1.5 pr-2 text-left text-[13px]",
+                    "relative flex w-full min-w-0 items-center gap-1.5 pr-2 text-left",
+                    COARSE_POINTER_TREE_ROW_SIZE_CLASS,
                     selected ? "bg-accent text-accent-foreground" : "hover:bg-state-hover",
                   )}
                   onClick={() => {
@@ -815,7 +824,7 @@ function DocsReaderPanel({
                     name={
                       item.kind === "directory" ? "Folder" : isImageFileName(item.path) ? "File" : "FileText"
                     }
-                    className="size-3.5 shrink-0"
+                    className={COARSE_POINTER_TREE_ICON_CLASS}
                   />
                   <span className="min-w-0 flex-1 truncate">
                     {item.kind === "file" ? fileLabel(item.name) : item.name}
@@ -837,12 +846,13 @@ function DocsReaderPanel({
             type="button"
             variant="ghost"
             size="sm"
+            className={cn("max-md:pointer-coarse:h-10 max-md:pointer-coarse:px-3", COARSE_POINTER_TEXT_SM_CLASS)}
             onClick={() => {
               if (vaultId === null) return;
               goTo(vaultId, listFolder);
             }}
           >
-            <Icon name="ChevronLeft" className="size-4" />
+            <Icon name="ChevronLeft" className="size-4 max-md:pointer-coarse:size-5" />
             목록
           </Button>
           <span className="min-w-0 flex-1" />
@@ -850,7 +860,7 @@ function DocsReaderPanel({
             type="button"
             variant="ghost"
             size="sm"
-            className="h-7 w-7 p-0"
+            className={cn("h-7 w-7 p-0", COARSE_POINTER_ICON_BUTTON_GROW_CLASS)}
             aria-label="그래프 보기"
             onClick={() => setGraphOpen(true)}
           >
@@ -867,23 +877,23 @@ function DocsReaderPanel({
           <Icon name="FolderOpen" className="size-10 text-muted-foreground opacity-40" />
         </div>
       ) : loadingDoc && doc === null ? (
-        <p className="p-4 text-sm text-muted-foreground">여는 중…</p>
+        <p className={cn("p-4 text-muted-foreground", COARSE_POINTER_TEXT_BASE_CLASS)}>여는 중…</p>
       ) : doc === null ? (
-        <p className="p-4 text-sm text-muted-foreground">이 문서를 찾지 못했습니다.</p>
+        <p className={cn("p-4 text-muted-foreground", COARSE_POINTER_TEXT_BASE_CLASS)}>이 문서를 찾지 못했습니다.</p>
       ) : (
         <>
           <div
             className={cn(
-              "flex h-9 shrink-0 items-center gap-2 border-b border-border pr-2 transition-[padding] duration-[420ms] ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none",
+              "flex h-9 shrink-0 items-center gap-2 border-b border-border pr-2 transition-[padding] duration-[420ms] ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none max-md:pointer-coarse:h-11",
               !compact && listCollapsed ? "pl-12" : "pl-3",
             )}
           >
-            <h1 className="min-w-0 flex-1 truncate text-sm font-medium">{fileLabel(doc.name)}</h1>
+            <h1 className={cn("min-w-0 flex-1 truncate font-medium", COARSE_POINTER_TEXT_BASE_CLASS)}>{fileLabel(doc.name)}</h1>
             {doc.kind === "markdown" && viewMode === "preview" && markdown.fields.length > 0 ? (
               <button
                 type="button"
                 className={cn(
-                  "inline-flex size-8 shrink-0 items-center justify-center rounded-md",
+                  "inline-flex size-8 shrink-0 items-center justify-center rounded-md max-md:pointer-coarse:size-10",
                   propsOpen
                     ? "bg-state-active text-foreground"
                     : "text-muted-foreground hover:bg-state-hover hover:text-foreground",
@@ -896,7 +906,7 @@ function DocsReaderPanel({
                   storeFrontmatterOpen(next);
                 }}
               >
-                <Icon name="SlidersHorizontal" className="size-3.5" />
+                <Icon name="SlidersHorizontal" className="size-3.5 max-md:pointer-coarse:size-5" />
               </button>
             ) : null}
             {doc.kind === "markdown" || doc.kind === "html" ? (
@@ -918,7 +928,7 @@ function DocsReaderPanel({
                   className="m-4 h-full min-h-[24rem] w-[calc(100%-2rem)] rounded-md border border-border bg-background"
                 />
               ) : doc.kind === "markdown" && viewMode === "preview" ? (
-                <div className="flex w-full justify-center px-4 pt-6 sm:px-8 sm:pt-8">
+                <div className={cn("flex w-full justify-center px-4 pt-6 sm:px-8 sm:pt-8", COARSE_POINTER_MARKDOWN_BODY_CLASS)}>
                   <div className="w-full min-w-0 max-w-prose" onClickCapture={onWikiClick}>
                     <Markdown content={markdown.body} />
                   </div>
@@ -928,7 +938,7 @@ function DocsReaderPanel({
                   <SourceCode content={doc.content} path={doc.path} overflow="wrap" />
                 </div>
               ) : (
-                <pre className="whitespace-pre-wrap break-all p-4 font-mono text-sm leading-6">{doc.content}</pre>
+                <pre className={cn("whitespace-pre-wrap break-all p-4 font-mono leading-6", COARSE_POINTER_TEXT_BASE_CLASS)}>{doc.content}</pre>
               )}
               {!(doc.kind === "html" && viewMode === "preview") ? <DocumentEndSpace /> : null}
             </div>
@@ -967,14 +977,20 @@ function DocsReaderPanel({
         className="flex h-full min-h-0 flex-col bg-background text-foreground"
       >
         <div className="flex items-center gap-2 border-b border-border px-3 py-2">
-          <Button type="button" variant="ghost" size="sm" onClick={() => setGraphOpen(false)}>
-            <Icon name="ChevronLeft" className="size-4" />
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className={cn("max-md:pointer-coarse:h-10 max-md:pointer-coarse:px-3", COARSE_POINTER_TEXT_SM_CLASS)}
+            onClick={() => setGraphOpen(false)}
+          >
+            <Icon name="ChevronLeft" className="size-4 max-md:pointer-coarse:size-5" />
             닫기
           </Button>
-          <h1 className="min-w-0 flex-1 truncate text-sm font-medium">3D 그래프</h1>
+          <h1 className={cn("min-w-0 flex-1 truncate font-medium", COARSE_POINTER_TEXT_BASE_CLASS)}>3D 그래프</h1>
         </div>
         {loadingGraph && graph === null ? (
-          <p className="p-6 text-sm text-muted-foreground">그래프를 그리는 중…</p>
+          <p className={cn("p-6 text-muted-foreground", COARSE_POINTER_TEXT_BASE_CLASS)}>그래프를 그리는 중…</p>
         ) : (
           <GraphView
             nodes={graph?.nodes ?? []}
@@ -1052,7 +1068,7 @@ function DocsReaderPanel({
                   aria-label="그래프"
                 >
                   {loadingGraph && graph === null ? (
-                    <p className="p-4 text-sm text-muted-foreground">그래프를 그리는 중…</p>
+                    <p className={cn("p-4 text-muted-foreground", COARSE_POINTER_TEXT_BASE_CLASS)}>그래프를 그리는 중…</p>
                   ) : (
                     <GraphView
                       nodes={graph?.nodes ?? []}

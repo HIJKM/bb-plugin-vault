@@ -4,12 +4,13 @@ import { createPortal } from "react-dom";
 import { PathBar } from "@/components/PathBar";
 import type { VaultChoice } from "@/components/Breadcrumbs";
 import { Button } from "@/components/ui/button";
+import { COARSE_POINTER_ICON_BUTTON_GROW_CLASS } from "@/components/ui/coarse-pointer-sizing";
 import { Icon } from "@/components/ui/icon";
 import { Input } from "@/components/ui/input";
 import { usePortalScopeProps } from "@/lib/portal-scope";
 import { cn } from "@/lib/utils";
 
-const ACTION_BUTTON_CLASS = "h-7 w-7 shrink-0 p-0";
+const ACTION_BUTTON_CLASS = cn("h-7 w-7 shrink-0 p-0", COARSE_POINTER_ICON_BUTTON_GROW_CLASS);
 const POPOVER_WIDTH = 224;
 
 function placePopover(
@@ -111,7 +112,7 @@ export function Toolbar({
     <div
       data-testid="vault-toolbar"
       className={cn(
-        "relative flex h-9 shrink-0 items-center gap-0.5 border-b border-border px-1.5",
+        "relative flex h-9 shrink-0 items-center gap-0.5 border-b border-border px-1.5 max-md:pointer-coarse:h-11",
         className,
       )}
     >
@@ -194,7 +195,7 @@ export function Toolbar({
                 data-testid="vault-search"
                 aria-label="Filter this folder"
                 placeholder="Filter…"
-                className="h-8 text-sm"
+                className="h-8 max-md:pointer-coarse:h-10"
                 autoCapitalize="off"
                 autoCorrect="off"
                 spellCheck={false}

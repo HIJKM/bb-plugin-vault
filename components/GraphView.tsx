@@ -1,8 +1,15 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import {
+  COARSE_POINTER_ICON_BUTTON_GROW_CLASS,
+  COARSE_POINTER_META_TEXT_CLASS,
+  COARSE_POINTER_TEXT_BASE_CLASS,
+  COARSE_POINTER_TEXT_SM_CLASS,
+} from "@/components/ui/coarse-pointer-sizing";
 import { Icon } from "@/components/ui/icon";
 import { useMediaQuery } from "@/components/ui/hooks/use-media-query";
 import type { GraphEdge, GraphNode } from "@/lib/note-graph";
+import { cn } from "@/lib/utils";
 import {
   aimGraphCameraAt,
   createGraphLayout,
@@ -71,17 +78,23 @@ export function GraphHelp() {
         type="button"
         aria-label="사용법"
         aria-expanded={open}
-        className="inline-flex size-6 items-center justify-center rounded-md text-muted-foreground/70 hover:bg-state-hover hover:text-foreground"
+        className={cn(
+          "inline-flex size-6 items-center justify-center rounded-md text-muted-foreground/70 hover:bg-state-hover hover:text-foreground",
+          COARSE_POINTER_ICON_BUTTON_GROW_CLASS,
+        )}
         onClick={() => {
           if (coarse) setOpen((value) => !value);
         }}
       >
-        <Icon name="Info" className="size-3.5" />
+        <Icon name="Info" className="size-3.5 max-md:pointer-coarse:size-5" />
       </button>
       {open ? (
         <p
           role="tooltip"
-          className="absolute right-0 bottom-full z-20 mb-1 w-56 rounded-md border border-border bg-popover px-2 py-1.5 text-[11px] leading-snug text-popover-foreground shadow-md"
+          className={cn(
+            "absolute right-0 bottom-full z-20 mb-1 w-56 rounded-md border border-border bg-popover px-2 py-1.5 leading-snug text-popover-foreground shadow-md",
+            COARSE_POINTER_META_TEXT_CLASS,
+          )}
         >
           {GRAPH_HELP}
         </p>
@@ -1015,7 +1028,7 @@ export function GraphView({
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       <div ref={wrapRef} className="relative min-h-0 min-w-0 flex-1 overscroll-none">
         {nodes.length === 0 ? (
-          <p className="p-6 text-sm text-muted-foreground">이 볼트에 노트가 없습니다.</p>
+          <p className={cn("p-6 text-muted-foreground", COARSE_POINTER_TEXT_BASE_CLASS)}>이 볼트에 노트가 없습니다.</p>
         ) : (
           <canvas
             ref={canvasRef}
@@ -1039,18 +1052,18 @@ export function GraphView({
                   type="button"
                   variant="ghost"
                   size="icon"
-                  className="pointer-events-auto size-6"
+                  className={cn("pointer-events-auto size-6", COARSE_POINTER_ICON_BUTTON_GROW_CLASS)}
                   aria-label="그래프 전체화면"
                   onClick={onFullscreen}
                 >
-                  <Icon name="Maximize2" className="size-3.5" />
+                  <Icon name="Maximize2" className="size-3.5 max-md:pointer-coarse:size-5" />
                 </Button>
               </div>
             ) : null}
-            <div className="pointer-events-none absolute top-2 right-2 z-20 flex items-center gap-2 text-[11px] text-muted-foreground">
+            <div className={cn("pointer-events-none absolute top-2 right-2 z-20 flex items-center gap-2 text-muted-foreground", COARSE_POINTER_META_TEXT_CLASS)}>
               <div className="pointer-events-auto flex items-center">
-                <Button type="button" variant="ghost" size="icon" className="size-6" aria-label="확대" onClick={() => controlsRef.current?.zoom(1.2)}>+</Button>
-                <Button type="button" variant="ghost" size="icon" className="size-6" aria-label="축소" onClick={() => controlsRef.current?.zoom(1 / 1.2)}>−</Button>
+                <Button type="button" variant="ghost" size="icon" className={cn("size-6", COARSE_POINTER_ICON_BUTTON_GROW_CLASS)} aria-label="확대" onClick={() => controlsRef.current?.zoom(1.2)}>+</Button>
+                <Button type="button" variant="ghost" size="icon" className={cn("size-6", COARSE_POINTER_ICON_BUTTON_GROW_CLASS)} aria-label="축소" onClick={() => controlsRef.current?.zoom(1 / 1.2)}>−</Button>
               </div>
               <span>{nodes.length}개</span>
               <span className="inline-flex items-center gap-1" aria-label="Far is pale blue, near is deep blue">
@@ -1072,7 +1085,10 @@ export function GraphView({
               data-passive=""
               aria-label={info.name}
               style={{ width: "max-content", maxWidth: "min(180px, calc(100% - 16px))", opacity: 0, pointerEvents: "none" }}
-              className="absolute z-10 flex h-[22px] items-center overflow-hidden text-ellipsis whitespace-nowrap rounded border border-foreground/40 bg-popover px-1.5 text-xs text-popover-foreground"
+              className={cn(
+                "absolute z-10 flex h-[22px] items-center overflow-hidden text-ellipsis whitespace-nowrap rounded border border-foreground/40 bg-popover px-1.5 text-popover-foreground max-md:pointer-coarse:h-8",
+                COARSE_POINTER_TEXT_SM_CLASS,
+              )}
             >
               {info.name}
             </div>
@@ -1093,14 +1109,14 @@ export function GraphView({
               }}
             >
               <div className="flex items-start gap-2">
-                <p className="min-w-0 flex-1 break-words text-xs font-medium">{info.name}</p>
-                <Button type="button" variant="ghost" size="icon" className="size-6 shrink-0" aria-label="노트 정보 닫기" onClick={() => controlsRef.current?.dismissInfo()}>×</Button>
+                <p className={cn("min-w-0 flex-1 break-words font-medium", COARSE_POINTER_TEXT_SM_CLASS)}>{info.name}</p>
+                <Button type="button" variant="ghost" size="icon" className={cn("size-6 shrink-0", COARSE_POINTER_ICON_BUTTON_GROW_CLASS)} aria-label="노트 정보 닫기" onClick={() => controlsRef.current?.dismissInfo()}>×</Button>
               </div>
-              <p className="mt-1 break-all text-[11px] text-muted-foreground">{info.path}</p>
+              <p className={cn("mt-1 break-all text-muted-foreground", COARSE_POINTER_META_TEXT_CLASS)}>{info.path}</p>
               <div className="mt-2 flex items-center justify-between gap-2">
-                <p className="text-[11px] text-muted-foreground">연결된 노트 {info.connections}개</p>
+                <p className={cn("text-muted-foreground", COARSE_POINTER_META_TEXT_CLASS)}>연결된 노트 {info.connections}개</p>
                 {variant === "local" ? null : (
-                  <Button type="button" variant="ghost" size="sm" className="h-7 shrink-0 px-2 text-xs" style={{ color: info.color }} onClick={() => controlsRef.current?.openFile()}>파일 열기</Button>
+                  <Button type="button" variant="ghost" size="sm" className={cn("h-7 shrink-0 px-2 max-md:pointer-coarse:h-9", COARSE_POINTER_TEXT_SM_CLASS)} style={{ color: info.color }} onClick={() => controlsRef.current?.openFile()}>파일 열기</Button>
                 )}
               </div>
             </div>

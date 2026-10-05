@@ -7,6 +7,10 @@ import {
   type FrontmatterItem,
 } from "@/lib/frontmatter";
 import { isRawHash, rawArchiveLabel } from "@/lib/raw-archive";
+import {
+  COARSE_POINTER_TEXT_BASE_CLASS,
+  COARSE_POINTER_TEXT_SM_CLASS,
+} from "@/components/ui/coarse-pointer-sizing";
 import { cn } from "@/lib/utils";
 import { resolveWikiTarget, type WikiEntry } from "@/lib/wiki-links";
 
@@ -52,7 +56,7 @@ function FieldValues({
   const raw = field.key === "raw";
   return (
     <div>
-      <div className="text-xs font-medium text-muted-foreground">{frontmatterFieldLabel(field.key)}</div>
+      <div className={cn("font-medium text-muted-foreground", COARSE_POINTER_TEXT_SM_CLASS)}>{frontmatterFieldLabel(field.key)}</div>
       <div className="mt-1 flex flex-col items-start gap-1">
         {visible.map((item, offset) => (
           <FieldValue
@@ -69,7 +73,7 @@ function FieldValues({
         {overflow ? (
           <button
             type="button"
-            className="text-xs font-normal text-muted-foreground hover:text-foreground"
+            className={cn("font-normal text-muted-foreground hover:text-foreground", COARSE_POINTER_TEXT_SM_CLASS)}
             onClick={onToggle}
           >
             {expanded ? "접기" : "… 펼치기"}
@@ -98,7 +102,9 @@ function FieldValue({
   onOpen: (vaultId: string, path: string) => void;
 }) {
   const text = itemLabel(item);
-  const textClass = tags ? "text-sm font-normal" : "text-xs font-normal";
+  const textClass = tags
+    ? cn("font-normal", COARSE_POINTER_TEXT_BASE_CLASS)
+    : cn("font-normal", COARSE_POINTER_TEXT_SM_CLASS);
   if (item.kind === "wiki") {
     const path = resolveWikiTarget(item.target, index);
     if (path !== null && vaultId !== null) {

@@ -74,3 +74,32 @@ export const COARSE_POINTER_PROVIDER_TAB_SIZE_CLASS =
 
 export const COARSE_POINTER_ROW_ACTION_SIZE_CLASS =
   "h-7 w-7 max-md:pointer-coarse:h-9 max-md:pointer-coarse:w-9";
+
+// Reader type. Desktop sizes stay on the class. The max-md:pointer-coarse
+// half applies only when the viewport is below 768px and the pointer is
+// coarse, which is true on a phone before the first touch. A narrow desktop
+// window keeps the small size.
+export const COARSE_POINTER_TREE_ROW_SIZE_CLASS =
+  "h-6 text-[13px] max-md:pointer-coarse:h-9 max-md:pointer-coarse:text-base";
+
+export const COARSE_POINTER_TREE_ICON_CLASS =
+  "size-3.5 shrink-0 max-md:pointer-coarse:size-4";
+
+// The host markdown root sets text-sm. important wins over that host rule
+// only inside the coarse media query, so a desktop window stays at text-sm.
+export const COARSE_POINTER_MARKDOWN_BODY_CLASS = [
+  "max-md:pointer-coarse:[&_[data-markdown-preview]]:text-base!",
+  "max-md:pointer-coarse:[&_[data-markdown-preview]_h1]:text-xl!",
+  "max-md:pointer-coarse:[&_[data-markdown-preview]_h2]:text-lg!",
+  "max-md:pointer-coarse:[&_[data-markdown-preview]_h3]:text-base!",
+  "max-md:pointer-coarse:[&_[data-markdown-preview]_h4]:text-base!",
+  "max-md:pointer-coarse:[&_[data-markdown-preview]_h5]:text-base!",
+  "max-md:pointer-coarse:[&_[data-markdown-preview]_h6]:text-sm!",
+  "max-md:pointer-coarse:[&_[data-markdown-preview]_code]:text-sm!",
+].join(" ");
+
+export const COARSE_POINTER_ICON_BUTTON_GROW_CLASS =
+  "max-md:pointer-coarse:h-9 max-md:pointer-coarse:w-9 max-md:pointer-coarse:[&_svg]:size-5";
+
+export const COARSE_POINTER_META_TEXT_CLASS =
+  "text-[11px] max-md:pointer-coarse:text-sm";
