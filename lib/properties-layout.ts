@@ -1,7 +1,11 @@
-/** The rising sheet is a phone. A narrow fine pointer stays the desktop dock. */
+import type { Device, Viewport } from "./device.ts";
+
+/** The rising sheet is a narrow phone. A narrow desktop stays the dock. A wider phone keeps the dock. */
 export function propertiesUseSheet(input: {
-  compact: boolean;
-  coarsePointer: boolean;
+  device: Device;
+  viewport: Viewport;
 }): boolean {
-  return input.compact && input.coarsePointer;
+  if (input.viewport !== "narrow") return false;
+  if (input.device === "phone") return true;
+  return false;
 }

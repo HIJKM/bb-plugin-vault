@@ -7,7 +7,7 @@ import {
   COARSE_POINTER_TEXT_SM_CLASS,
 } from "@/components/ui/coarse-pointer-sizing";
 import { Icon } from "@/components/ui/icon";
-import { useMediaQuery } from "@/components/ui/hooks/use-media-query";
+import { useVaultChrome } from "@/lib/use-vault-chrome";
 import type { GraphEdge, GraphNode } from "@/lib/note-graph";
 import { cn } from "@/lib/utils";
 import {
@@ -62,16 +62,16 @@ type Controls = {
 };
 
 export function GraphHelp() {
-  const coarse = useMediaQuery("(pointer: coarse)");
+  const largeHit = useVaultChrome().hitTarget === "large";
   const [open, setOpen] = useState(false);
   return (
     <div
       className="absolute right-2 bottom-1.5 z-20"
       onMouseEnter={() => {
-        if (!coarse) setOpen(true);
+        if (!largeHit) setOpen(true);
       }}
       onMouseLeave={() => {
-        if (!coarse) setOpen(false);
+        if (!largeHit) setOpen(false);
       }}
     >
       <button
@@ -83,10 +83,10 @@ export function GraphHelp() {
           COARSE_POINTER_ICON_BUTTON_GROW_CLASS,
         )}
         onClick={() => {
-          if (coarse) setOpen((value) => !value);
+          if (largeHit) setOpen((value) => !value);
         }}
       >
-        <Icon name="Info" className="size-3.5 max-md:pointer-coarse:size-4" />
+        <Icon name="Info" className="size-3.5 in-data-[phone-metrics]:size-4" />
       </button>
       {open ? (
         <p
@@ -145,6 +145,7 @@ export function GraphView({
     highlightPaths,
   };
   const helpId = useId();
+  const largeHit = useVaultChrome().hitTarget === "large";
   const [info, setInfo] = useState<(GraphNode & { connections: number; color: string }) | null>(null);
 
   function positionInfo() {
@@ -327,11 +328,10 @@ export function GraphView({
       sprite.fillRect(-size / 2, -size / 2, size, size);
       depthSprites.set(color, { image, size });
     }
-    const coarse = window.matchMedia("(pointer: coarse)").matches;
     const motionPreference = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const edgeBudget = coarse ? 1800 : 4000;
-    const maxSteps = Math.min(GRAPH_MAX_STEPS, coarse ? 80 : 120);
-    const frameInterval = coarse ? 1000 / 30 : 1000 / 60;
+    const edgeBudget = largeHit ? 1800 : 4000;
+    const maxSteps = Math.min(GRAPH_MAX_STEPS, largeHit ? 80 : 120);
+    const frameInterval = largeHit ? 1000 / 30 : 1000 / 60;
     const edgeStride = Math.max(1, Math.ceil(layout.edges.length / edgeBudget));
     let camera = { ...DEFAULT_GRAPH_CAMERA };
     let focusIndex = -1;
@@ -459,7 +459,7 @@ export function GraphView({
       width = wrap!.clientWidth;
       height = wrap!.clientHeight;
       labelText.clear();
-      dpr = Math.min(coarse ? 1.5 : 2, window.devicePixelRatio || 1) * quality;
+      dpr = Math.min(largeHit ? 1.5 : 2, window.devicePixelRatio || 1) * quality;
       canvas!.width = Math.max(1, Math.round(width * dpr));
       canvas!.height = Math.max(1, Math.round(height * dpr));
       requestDraw();
@@ -661,7 +661,7 @@ export function GraphView({
         let text = labelText.get(index);
         if (!text) {
           const name = nodes[index].name;
-          const maxWidth = Math.min(coarse ? 140 : 180, width - 28);
+          const maxWidth = Math.min(largeHit ? 140 : 180, width - 28);
           if (maxWidth <= 0) return;
           let length = Math.min(name.length, 28);
           let title = name.slice(0, length) + (length < name.length ? "…" : "");
@@ -674,7 +674,7 @@ export function GraphView({
           text = { title, width: Math.ceil(textWidth) + 12 };
           labelText.set(index, text);
         }
-        const rect = placeGraphCallout(point, { width: text.width, height: 22 }, { width, height }, occupied, coarse ? 22 : 28);
+        const rect = placeGraphCallout(point, { width: text.width, height: 22 }, { width, height }, occupied, largeHit ? 22 : 28);
         if (rect === null) return;
         const leader = graphCalloutLeader(point, rect, radius(index));
         if (leader === null) return;
@@ -740,7 +740,7 @@ export function GraphView({
       for (let i = order.length - 1; i >= 0; i--) {
         const index = order[i];
         const node = projected[index];
-        if (node?.visible && Math.hypot(node.x - point.x, node.y - point.y) <= Math.max(radius(index) + 3, coarse ? 22 : 12)) return index;
+        if (node?.visible && Math.hypot(node.x - point.x, node.y - point.y) <= Math.max(radius(index) + 3, largeHit ? 22 : 12)) return index;
       }
       return -1;
     }
@@ -1016,7 +1016,7 @@ export function GraphView({
       canvas.removeEventListener("pointerleave", pointerLeave);
       canvas.removeEventListener("keydown", keyDown);
     };
-  }, [nodes, edges]);
+  }, [largeHit, nodes, edges]);
 
   useEffect(() => { controlsRef.current?.focusPath(activePath); }, [activePath]);
   const highlightKey = highlightPaths.join("\0");
@@ -1054,7 +1054,7 @@ export function GraphView({
                   aria-label="그래프 전체화면"
                   onClick={onFullscreen}
                 >
-                  <Icon name="Maximize2" className="size-3.5 max-md:pointer-coarse:size-4" />
+                  <Icon name="Maximize2" className="size-3.5 in-data-[phone-metrics]:size-4" />
                 </Button>
               </div>
             ) : null}
@@ -1084,7 +1084,7 @@ export function GraphView({
               aria-label={info.name}
               style={{ width: "max-content", maxWidth: "min(180px, calc(100% - 16px))", opacity: 0, pointerEvents: "none" }}
               className={cn(
-                "absolute z-10 flex h-[22px] items-center overflow-hidden text-ellipsis whitespace-nowrap rounded border border-foreground/40 bg-popover px-1.5 text-popover-foreground max-md:pointer-coarse:h-8",
+                "absolute z-10 flex h-[22px] items-center overflow-hidden text-ellipsis whitespace-nowrap rounded border border-foreground/40 bg-popover px-1.5 text-popover-foreground in-data-[phone-metrics]:h-8",
                 COARSE_POINTER_TEXT_SM_CLASS,
               )}
             >
@@ -1114,7 +1114,7 @@ export function GraphView({
               <div className="mt-2 flex items-center justify-between gap-2">
                 <p className={cn("text-muted-foreground", COARSE_POINTER_META_TEXT_CLASS)}>연결된 노트 {info.connections}개</p>
                 {variant === "local" ? null : (
-                  <Button type="button" variant="ghost" size="sm" className={cn("h-7 shrink-0 px-2 max-md:pointer-coarse:h-9", COARSE_POINTER_TEXT_SM_CLASS)} style={{ color: info.color }} onClick={() => controlsRef.current?.openFile()}>파일 열기</Button>
+                  <Button type="button" variant="ghost" size="sm" className={cn("h-7 shrink-0 px-2 in-data-[phone-metrics]:h-9", COARSE_POINTER_TEXT_SM_CLASS)} style={{ color: info.color }} onClick={() => controlsRef.current?.openFile()}>파일 열기</Button>
                 )}
               </div>
             </div>

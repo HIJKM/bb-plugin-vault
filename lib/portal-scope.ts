@@ -14,18 +14,24 @@
  * with the host copy and lets Electron route pointer input to visible
  * overlay controls instead of an underlying window-drag region.
  */
+import { useVaultChrome } from "./use-vault-chrome.ts";
+import { phoneMetrics } from "./vault-chrome.ts";
+
 declare const __BB_PLUGIN_ID__: string | undefined;
 
 export function usePortalScopeProps(): {
   "data-bb-portaled-overlay": "";
   "data-bb-plugin-root"?: "";
   "data-bb-plugin"?: string;
+  "data-phone-metrics"?: "";
 } {
   const pluginId =
     typeof __BB_PLUGIN_ID__ === "string" ? __BB_PLUGIN_ID__ : undefined;
+  const metrics = phoneMetrics(useVaultChrome());
   return {
     "data-bb-portaled-overlay": "",
     "data-bb-plugin-root": "",
     ...(pluginId !== undefined ? { "data-bb-plugin": pluginId } : {}),
+    ...(metrics ? { "data-phone-metrics": "" } : {}),
   };
 }

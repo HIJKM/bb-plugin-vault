@@ -36,8 +36,6 @@ import {
   COARSE_POINTER_TREE_ICON_CLASS,
   COARSE_POINTER_TREE_ROW_SIZE_CLASS,
 } from "@/components/ui/coarse-pointer-sizing";
-import { useIsCompactViewport } from "@/components/ui/hooks/use-compact-viewport";
-import { useMediaQuery } from "@/components/ui/hooks/use-media-query";
 import { consumeAgentRoute, consumeGraphOpen } from "@/lib/agent-entry";
 import { isImageFileName } from "@/lib/image-file";
 import { cn } from "@/lib/utils";
@@ -46,6 +44,8 @@ import { parseFrontmatterFields, splitMarkdownFrontmatter, type FrontmatterField
 import { listedEntryVisible } from "@/lib/hidden-files";
 import { useHiddenPrefs } from "@/lib/hidden-prefs";
 import { propertiesUseSheet } from "@/lib/properties-layout";
+import { useVaultChrome } from "@/lib/use-vault-chrome";
+import { phoneMetrics, stackedLayout } from "@/lib/vault-chrome";
 import { listScrollKey, readListScroll, writeListScroll } from "@/lib/session-list-scroll";
 import { THREAD_VAULT_ACTION_ID } from "@/lib/panel-open";
 import { readSessionRoute, writeSessionRoute } from "@/lib/session-route";
@@ -309,8 +309,9 @@ function DocsReaderPanel({
 }: PluginNavPanelProps & { onRoute?: (subPath: string) => void }) {
   const rpc = useRpc<typeof rpcContract>();
   const navigate = useBbNavigate();
-  const compact = useIsCompactViewport();
-  const coarsePointer = useMediaQuery("(pointer: coarse)");
+  const chrome = useVaultChrome();
+  const stacked = stackedLayout(chrome);
+  const phoneSized = phoneMetrics(chrome);
   const route = decodeRoute(subPath);
   const [listWidth, setListWidth] = useState(readStoredListWidth);
   const [listCollapsed, setListCollapsed] = useState(readListCollapsed);
@@ -546,8 +547,8 @@ function DocsReaderPanel({
     () => visibleTreeRows(shownIndex, expandedFolders, query),
     [expandedFolders, query, shownIndex],
   );
-  const showList = !compact || !viewingFile;
-  const propsSheet = propertiesUseSheet({ compact, coarsePointer });
+  const showList = !stacked || !viewingFile;
+  const propsSheet = propertiesUseSheet({ device: chrome.device, viewport: chrome.viewport });
 
   useEffect(() => {
     setExpandedFolders(new Set());
@@ -773,12 +774,12 @@ function DocsReaderPanel({
         onQueryChange={setQuery}
         filterFocusTick={filterFocusTick}
         graphOpen={graphPeek}
-        onOpenGraph={compact ? () => setGraphOpen(true) : undefined}
-        onToggleGraph={compact ? undefined : () => setGraphPeek((open) => !open)}
+        onOpenGraph={stacked ? () => setGraphOpen(true) : undefined}
+        onToggleGraph={stacked ? undefined : () => setGraphPeek((open) => !open)}
         vaults={vaults}
         vaultId={vaultId}
         onSelectVault={(id) => goTo(id, "")}
-        className={compact ? undefined : "pr-9"}
+        className={stacked ? undefined : "pr-9"}
       />
       <div
         ref={listScrollerRef}
@@ -861,19 +862,19 @@ function DocsReaderPanel({
 
   const detailPane = (
     <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
-      {compact && viewingFile ? (
+      {stacked && viewingFile ? (
         <div className="flex items-center gap-2 border-b border-border px-3 py-2">
           <Button
             type="button"
             variant="ghost"
             size="sm"
-            className={cn("max-md:pointer-coarse:h-8 max-md:pointer-coarse:px-2.5", COARSE_POINTER_HEADER_TITLE_CLASS)}
+            className={cn("in-data-[phone-metrics]:h-8 in-data-[phone-metrics]:px-2.5", COARSE_POINTER_HEADER_TITLE_CLASS)}
             onClick={() => {
               if (vaultId === null) return;
               goTo(vaultId, listFolder);
             }}
           >
-            <Icon name="ChevronLeft" className="size-4 max-md:pointer-coarse:size-4" />
+            <Icon name="ChevronLeft" className="size-4" />
             목록
           </Button>
           <span className="min-w-0 flex-1" />
@@ -907,7 +908,7 @@ function DocsReaderPanel({
             className={cn(
               "flex shrink-0 items-center gap-2 border-b border-border pr-2 transition-[padding] duration-[420ms] ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none",
               COARSE_POINTER_HEADER_BAR_CLASS,
-              !compact && listCollapsed ? "pl-12" : "pl-3",
+              !stacked && listCollapsed ? "pl-12" : "pl-3",
             )}
           >
             <h1 className={cn("min-w-0 flex-1 truncate font-medium", COARSE_POINTER_HEADER_TITLE_CLASS)}>{fileLabel(doc.name)}</h1>
@@ -924,7 +925,7 @@ function DocsReaderPanel({
                 aria-label="속성"
                 onClick={() => setPropertiesOpen(!propsOpen)}
               >
-                <Icon name="SlidersHorizontal" className="size-3.5 max-md:pointer-coarse:size-4" />
+                <Icon name="SlidersHorizontal" className="size-3.5 in-data-[phone-metrics]:size-4" />
               </button>
             ) : null}
             {doc.kind === "markdown" || doc.kind === "html" ? (
@@ -991,20 +992,23 @@ function DocsReaderPanel({
     </div>
   );
 
-  const showDetail = !compact || viewingFile;
+  const showDetail = !stacked || viewingFile;
 
   if (graphOpen) {
     return (
-      <div className="flex h-full min-h-0 flex-col bg-background text-foreground">
+      <div
+        data-phone-metrics={phoneSized ? "" : undefined}
+        className="flex h-full min-h-0 flex-col bg-background text-foreground"
+      >
         <div className="flex items-center gap-2 border-b border-border px-3 py-2">
           <Button
             type="button"
             variant="ghost"
             size="sm"
-            className={cn("max-md:pointer-coarse:h-8 max-md:pointer-coarse:px-2.5", COARSE_POINTER_HEADER_TITLE_CLASS)}
+            className={cn("in-data-[phone-metrics]:h-8 in-data-[phone-metrics]:px-2.5", COARSE_POINTER_HEADER_TITLE_CLASS)}
             onClick={() => setGraphOpen(false)}
           >
-            <Icon name="ChevronLeft" className="size-4 max-md:pointer-coarse:size-4" />
+            <Icon name="ChevronLeft" className="size-4" />
             닫기
           </Button>
           <h1 className={cn("min-w-0 flex-1 truncate font-medium", COARSE_POINTER_HEADER_TITLE_CLASS)}>3D 그래프</h1>
@@ -1030,12 +1034,13 @@ function DocsReaderPanel({
 
   return (
     <div
+      data-phone-metrics={phoneSized ? "" : undefined}
       className={cn(
         "relative flex h-full min-h-0 bg-background text-foreground",
         resizing ? "select-none" : "",
       )}
     >
-      {compact ? (
+      {stacked ? (
         showList ? listPane : null
       ) : showList ? (
         <div
@@ -1127,7 +1132,7 @@ function DocsReaderPanel({
         </div>
       ) : null}
       {showDetail ? detailPane : null}
-      {!compact ? (
+      {!stacked ? (
         <button
           type="button"
           aria-label={listCollapsed ? "파일 목록 펼치기" : "파일 목록 접기"}

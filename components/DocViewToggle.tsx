@@ -32,14 +32,14 @@ export function DocViewToggle({
             aria-label={option.label}
             data-testid={`vault-doc-mode-${option.mode}`}
             className={cn(
-              "inline-flex size-7 items-center justify-center rounded-[6px] max-md:pointer-coarse:size-8",
+              "inline-flex size-7 items-center justify-center rounded-[6px] in-data-[phone-metrics]:size-8",
               selected
                 ? "bg-background text-foreground shadow-sm"
                 : "text-muted-foreground hover:text-foreground",
             )}
             onClick={() => onChange(option.mode)}
           >
-            <Icon name={option.icon} className="size-3.5 max-md:pointer-coarse:size-4" />
+            <Icon name={option.icon} className="size-3.5 in-data-[phone-metrics]:size-4" />
           </button>
         );
       })}

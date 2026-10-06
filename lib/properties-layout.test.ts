@@ -5,11 +5,13 @@ import { describe, it } from "node:test";
 import { propertiesUseSheet } from "./properties-layout.ts";
 
 describe("properties layout", () => {
-  it("rises from the bottom only on a narrow coarse pointer", () => {
-    assert.equal(propertiesUseSheet({ compact: true, coarsePointer: true }), true);
-    assert.equal(propertiesUseSheet({ compact: true, coarsePointer: false }), false);
-    assert.equal(propertiesUseSheet({ compact: false, coarsePointer: true }), false);
-    assert.equal(propertiesUseSheet({ compact: false, coarsePointer: false }), false);
+  it("rises from the bottom only on a narrow phone", () => {
+    assert.equal(propertiesUseSheet({ device: "phone", viewport: "narrow" }), true);
+    assert.equal(propertiesUseSheet({ device: "phone", viewport: "medium" }), false);
+    assert.equal(propertiesUseSheet({ device: "phone", viewport: "wide" }), false);
+    assert.equal(propertiesUseSheet({ device: "desktop", viewport: "narrow" }), false);
+    assert.equal(propertiesUseSheet({ device: "desktop", viewport: "wide" }), false);
+    assert.equal(propertiesUseSheet({ device: "tablet", viewport: "narrow" }), false);
   });
 
   it("docks flat on the desktop and keeps the rise on the phone", () => {
@@ -18,7 +20,7 @@ describe("properties layout", () => {
     const dock = panel.slice(panel.indexOf("export function PropertiesDock"));
     const dockBody = dock.slice(0, dock.indexOf("export function PropertiesSheet"));
 
-    assert.match(app, /propertiesUseSheet\(\{ compact, coarsePointer \}\)/);
+    assert.match(app, /propertiesUseSheet\(\{ device: chrome\.device, viewport: chrome\.viewport \}\)/);
     assert.doesNotMatch(app, /contentWidth/);
     assert.doesNotMatch(app, /vault-properties-rail/);
     assert.match(app, /data-testid="vault-properties-dock"|<PropertiesDock/);

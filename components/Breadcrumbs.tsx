@@ -74,14 +74,14 @@ export function Breadcrumbs({
         aria-expanded={canPickVault ? menuOpen : undefined}
         aria-controls={canPickVault && menuOpen ? menuId : undefined}
         className={cn(
-          "flex h-7 items-center gap-1 rounded-md px-1.5 font-semibold whitespace-nowrap text-foreground hover:bg-state-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring max-md:pointer-coarse:h-8",
+          "flex h-7 items-center gap-1 rounded-md px-1.5 font-semibold whitespace-nowrap text-foreground hover:bg-state-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring in-data-[phone-metrics]:h-8",
           COARSE_POINTER_HEADER_TITLE_CLASS,
         )}
         onClick={() => {
           if (canPickVault) setMenuOpen((open) => !open);
         }}
       >
-        <Icon name="FolderOpen" className="size-3.5 shrink-0 max-md:pointer-coarse:size-4" aria-hidden="true" />
+        <Icon name="FolderOpen" className="size-3.5 shrink-0 in-data-[phone-metrics]:size-4" aria-hidden="true" />
         <span>{rootLabel}</span>
         {canPickVault ? <Icon name="ChevronDown" className="size-3 shrink-0 text-muted-foreground" aria-hidden="true" /> : null}
       </button>
@@ -105,7 +105,7 @@ export function Breadcrumbs({
                     role="option"
                     aria-selected={selected}
                     className={cn(
-                      "flex h-7 w-full items-center rounded-md px-2 text-left max-md:pointer-coarse:h-8",
+                      "flex h-7 w-full items-center rounded-md px-2 text-left in-data-[phone-metrics]:h-8",
                       COARSE_POINTER_HEADER_TITLE_CLASS,
                       selected ? "bg-accent text-accent-foreground" : "hover:bg-state-hover",
                     )}

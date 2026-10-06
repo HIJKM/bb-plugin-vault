@@ -211,7 +211,7 @@ export function Toolbar({
                 data-testid="vault-search"
                 aria-label="Filter this folder"
                 placeholder="Filter…"
-                className="h-8 text-sm max-md:pointer-coarse:h-8 max-md:pointer-coarse:text-sm"
+                className="h-8 text-sm"
                 autoCapitalize="off"
                 autoCorrect="off"
                 spellCheck={false}
