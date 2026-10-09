@@ -65,6 +65,20 @@ describe("hidden vault names", () => {
     assert.match(server, /listEntries: async \(vaultId\) => listVaultEntries\(await vaultById\(vaultId\)\)/);
   });
 
+  it("opens the folder filter from the right edge at a fixed width", () => {
+    const toolbar = readFileSync(new URL("../components/Toolbar.tsx", import.meta.url), "utf8");
+    const shell = toolbar.indexOf("data-testid={SEARCH_SHELL}");
+    const path = toolbar.indexOf("<PathBar");
+    const hidden = toolbar.indexOf('data-testid="vault-show-hidden"');
+    assert.ok(shell > hidden && hidden > path);
+    assert.match(toolbar, /max-w-full min-w-0 shrink-0 overflow-hidden transition-\[width\] duration-200 ease-out/);
+    assert.match(toolbar, /showSearch \? "w-80" : "w-7 in-data-\[phone-metrics\]:w-8"/);
+    assert.match(toolbar, /absolute top-0 right-0/);
+    assert.doesNotMatch(toolbar, /(?<!max-)w-full|w-\[min\(|max-w-xs|calc\(100%/);
+    assert.doesNotMatch(toolbar, /vault-search-popover/);
+    assert.doesNotMatch(toolbar, /createPortal/);
+  });
+
   it("puts the show-hidden toggle on the toolbar and in settings", () => {
     const toolbar = readFileSync(new URL("../components/Toolbar.tsx", import.meta.url), "utf8");
     const app = readFileSync(new URL("../app.tsx", import.meta.url), "utf8");

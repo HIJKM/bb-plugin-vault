@@ -1,35 +1,15 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 
 import { PathBar } from "@/components/PathBar";
 import type { VaultChoice } from "@/components/Breadcrumbs";
 import { Button } from "@/components/ui/button";
-import { COARSE_POINTER_HEADER_BAR_CLASS, COARSE_POINTER_ICON_BUTTON_GROW_CLASS } from "@/components/ui/coarse-pointer-sizing";
+import { COARSE_POINTER_HEADER_BAR_CLASS, COARSE_POINTER_ICON_BUTTON_GROW_CLASS, COARSE_POINTER_TEXT_SM_CLASS } from "@/components/ui/coarse-pointer-sizing";
 import { Icon } from "@/components/ui/icon";
-import { Input } from "@/components/ui/input";
 import { setShowHidden, useHiddenPrefs } from "@/lib/hidden-prefs";
-import { usePortalScopeProps } from "@/lib/portal-scope";
 import { cn } from "@/lib/utils";
 
 const ACTION_BUTTON_CLASS = cn("h-7 w-7 shrink-0 p-0", COARSE_POINTER_ICON_BUTTON_GROW_CLASS);
-const POPOVER_WIDTH = 224;
-
-function placePopover(
-  anchor: HTMLElement,
-  popover?: HTMLElement | null,
-): { top: number; left: number; width: number } {
-  const rect = anchor.getBoundingClientRect();
-  const width = Math.min(POPOVER_WIDTH, Math.max(160, window.innerWidth - 16));
-  const height = popover?.offsetHeight ?? 48;
-  const gap = 6;
-  const maxLeft = window.innerWidth - width - 8;
-  const left = Math.min(Math.max(8, rect.left - width - gap), Math.max(8, maxLeft));
-  let top = rect.top;
-  if (top + height > window.innerHeight - 8) {
-    top = Math.max(8, window.innerHeight - 8 - height);
-  }
-  return { top, left, width };
-}
+const SEARCH_SHELL = "vault-search-shell";
 
 export interface ToolbarProps {
   rootLabel: string;
@@ -59,11 +39,9 @@ export function Toolbar({
   className,
 }: ToolbarProps) {
   const [filterOpen, setFilterOpen] = useState(false);
-  const [popoverBox, setPopoverBox] = useState({ top: 0, left: 0, width: POPOVER_WIDTH });
-  const filterWrapRef = useRef<HTMLDivElement>(null);
-  const filterPopoverRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const portalScopeProps = usePortalScopeProps();
+  const searchButtonRef = useRef<HTMLButtonElement>(null);
+  const showSearch = filterOpen || query !== "";
 
   useEffect(() => {
     if (filterFocusTick === 0) return;
@@ -71,44 +49,17 @@ export function Toolbar({
   }, [filterFocusTick]);
 
   useLayoutEffect(() => {
-    if (!filterOpen) return;
-    const anchor = filterWrapRef.current;
-    if (anchor !== null) setPopoverBox(placePopover(anchor, filterPopoverRef.current));
-  }, [filterOpen]);
-
-  useLayoutEffect(() => {
-    if (!filterOpen) return;
-    const input = searchInputRef.current;
-    if (input === null) return;
-    input.focus();
-    if (input.value === "") input.select();
-  }, [filterOpen, filterFocusTick]);
-
-  useEffect(() => {
-    if (!filterOpen) return;
-    function onPointerDown(event: PointerEvent) {
-      if (!(event.target instanceof Node)) return;
-      if (filterWrapRef.current?.contains(event.target)) return;
-      if (filterPopoverRef.current?.contains(event.target)) return;
-      setFilterOpen(false);
+    if (showSearch) {
+      const input = searchInputRef.current;
+      if (input === null) return;
+      input.focus();
+      if (input.value === "") input.select();
+      return;
     }
-    function onReposition() {
-      const anchor = filterWrapRef.current;
-      if (anchor !== null) setPopoverBox(placePopover(anchor, filterPopoverRef.current));
-    }
-    document.addEventListener("pointerdown", onPointerDown);
-    window.addEventListener("resize", onReposition);
-    window.addEventListener("scroll", onReposition, true);
-    return () => {
-      document.removeEventListener("pointerdown", onPointerDown);
-      window.removeEventListener("resize", onReposition);
-      window.removeEventListener("scroll", onReposition, true);
-    };
-  }, [filterOpen]);
+    if (document.activeElement === searchInputRef.current) searchButtonRef.current?.focus();
+  }, [showSearch, filterFocusTick]);
 
   const { showHidden } = useHiddenPrefs();
-  const filterActive = query !== "";
-  const portalTarget = typeof document === "undefined" ? null : document.body;
 
   return (
     <div
@@ -168,71 +119,80 @@ export function Toolbar({
         <Icon name={showHidden ? "Eye" : "EyeOff"} className="size-3.5" aria-hidden="true" />
       </Button>
 
-      <div className="relative shrink-0" ref={filterWrapRef} title="필터검색 (Ctrl+F)">
+      <div
+        data-testid={SEARCH_SHELL}
+        title={showSearch ? undefined : "필터검색 (Ctrl+F)"}
+        className={cn(
+          "relative h-7 max-w-full min-w-0 shrink-0 overflow-hidden transition-[width] duration-200 ease-out motion-reduce:transition-none",
+          "in-data-[phone-metrics]:h-8",
+          showSearch ? "w-80" : "w-7 in-data-[phone-metrics]:w-8",
+        )}
+      >
+        <input
+          ref={searchInputRef}
+          type="search"
+          value={query}
+          data-testid="vault-search"
+          aria-label="필터검색"
+          aria-hidden={showSearch ? undefined : true}
+          placeholder="필터"
+          autoCapitalize="off"
+          autoCorrect="off"
+          spellCheck={false}
+          tabIndex={showSearch ? 0 : -1}
+          className={cn(
+            "absolute inset-0 rounded-md border pr-8 pl-2 text-foreground placeholder:text-muted-foreground",
+            "in-data-[phone-metrics]:pr-9",
+            COARSE_POINTER_TEXT_SM_CLASS,
+            "focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none",
+            "[&::-webkit-search-cancel-button]:hidden",
+            showSearch
+              ? "border-border bg-background"
+              : "pointer-events-none border-transparent bg-transparent",
+          )}
+          onChange={(event) => onQueryChange(event.target.value)}
+          onBlur={(event) => {
+            if (query !== "") return;
+            const next = event.relatedTarget;
+            const shell = event.currentTarget.closest(`[data-testid='${SEARCH_SHELL}']`);
+            if (next instanceof Node && shell?.contains(next)) return;
+            setFilterOpen(false);
+          }}
+          onKeyDown={(event) => {
+            if (event.key !== "Escape") return;
+            event.stopPropagation();
+            if (query !== "") {
+              event.preventDefault();
+              onQueryChange("");
+              return;
+            }
+            setFilterOpen(false);
+          }}
+        />
         <Button
+          ref={searchButtonRef}
           type="button"
           variant="ghost"
           size="sm"
-          className={cn("relative", ACTION_BUTTON_CLASS)}
-          aria-label={filterActive ? `필터검색 (${query})` : "필터검색"}
-          aria-pressed={filterOpen || filterActive}
-          aria-expanded={filterOpen}
+          className={cn("absolute top-0 right-0", ACTION_BUTTON_CLASS)}
+          aria-label="필터검색"
+          aria-pressed={showSearch}
+          aria-expanded={showSearch}
+          aria-hidden={showSearch ? true : undefined}
+          tabIndex={showSearch ? -1 : 0}
           data-testid="vault-filter"
-          onClick={() => setFilterOpen((open) => !open)}
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => {
+            if (showSearch) {
+              searchInputRef.current?.focus();
+              return;
+            }
+            setFilterOpen(true);
+          }}
         >
           <Icon name="Search" className="size-3.5" aria-hidden="true" />
-          {filterActive ? (
-            <span className="absolute top-1 right-1 size-1.5 rounded-full bg-primary" aria-hidden="true" />
-          ) : null}
         </Button>
       </div>
-
-      {filterOpen && portalTarget !== null
-        ? createPortal(
-            <div
-              {...portalScopeProps}
-              ref={filterPopoverRef}
-              role="dialog"
-              aria-label="Filter this folder"
-              data-testid="vault-search-popover"
-              className="rounded-md border border-border bg-background p-2 shadow-md"
-              style={{
-                position: "fixed",
-                top: popoverBox.top,
-                left: popoverBox.left,
-                width: popoverBox.width,
-                zIndex: 80,
-              }}
-            >
-              <Input
-                ref={searchInputRef}
-                type="text"
-                value={query}
-                data-testid="vault-search"
-                aria-label="Filter this folder"
-                placeholder="Filter…"
-                className="h-8 text-sm"
-                autoCapitalize="off"
-                autoCorrect="off"
-                spellCheck={false}
-                onChange={(event) => onQueryChange(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Escape") {
-                    event.stopPropagation();
-                    if (query !== "") {
-                      event.preventDefault();
-                      onQueryChange("");
-                    } else {
-                      setFilterOpen(false);
-                      event.currentTarget.blur();
-                    }
-                  }
-                }}
-              />
-            </div>,
-            portalTarget,
-          )
-        : null}
     </div>
   );
 }
