@@ -44,6 +44,19 @@ describe("graphDepthAppearance", () => {
     }
   });
 
+  it("keeps the depth profile when a theme ramp replaces the fallback blues", () => {
+    const ramp = ["#112233", "#224466", "#336699", "#4488aa", "#55aabb", "#66ccdd", "#77ddee", "#88eeff", "#99ddff", "#aabbcc", "#bbccdd", "#ccddee", "#ddeeff", "#eef6ff", "#f7fbff", "#ffffff", "#8839ef"];
+    const far = graphDepthAppearance(-220, ramp);
+    const near = graphDepthAppearance(220, ramp);
+    assert.equal(far.color, ramp[0]);
+    assert.equal(far.opacity, graphDepthAppearance(-220).opacity);
+    assert.equal(far.blur, graphDepthAppearance(-220).blur);
+    assert.equal(near.color, ramp[16]);
+    assert.equal(near.opacity, 1);
+    assert.strictEqual(graphDepthAppearance(220, ramp), near);
+    assert.notEqual(far.color, graphDepthAppearance(-220).color);
+  });
+
   it("softens the same note when camera rotation moves it from front to back", () => {
     const note = { x: 0, y: 0, z: 220 };
     const camera = { orientation: { x: 0, y: 0, z: 0, w: 1 }, scale: 1, x: 0, y: 0 };

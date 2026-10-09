@@ -26,11 +26,11 @@ import {
 import {
   countGraphConnections,
   graphDepthAppearance,
+  graphDepthSamples,
   graphSelectionReveal,
-  GRAPH_DEPTH_APPEARANCES,
-  GRAPH_DEPTH_COLORS,
   GRAPH_EDGE_REVEAL_MS,
 } from "@/lib/graph-presentation";
+import { GRAPH_THEME_FALLBACK, graphThemePalette, readGraphThemeTokens, type GraphThemePalette } from "@/lib/graph-theme";
 import {
   closestGraphCallouts,
   graphCalloutLeader,
@@ -42,7 +42,7 @@ import {
 import { agentMarkGlow, graphLabelHidden, graphNodeEmphasis, highlightedNodeIndices } from "@/lib/graph-highlight";
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
-const SELECTED_NODE_COLOR = "#8b5cf6";
+const THEME_STYLE_ID = "bb-app-theme";
 const INFO_TRANSITION_MS = 180;
 const FOCUS_MS = 560;
 const MAX_GRAPH_ZOOM = 8;
@@ -146,7 +146,18 @@ export function GraphView({
   };
   const helpId = useId();
   const largeHit = useVaultChrome().hitTarget === "large";
-  const [info, setInfo] = useState<(GraphNode & { connections: number; color: string }) | null>(null);
+  const [info, setInfo] = useState<(GraphNode & { connections: number }) | null>(null);
+  const [depthColors, setDepthColors] = useState<readonly string[]>(() => graphThemePalette(GRAPH_THEME_FALLBACK).depth);
+  const [accentColor, setAccentColor] = useState(GRAPH_THEME_FALLBACK.highlight);
+  const publishedThemeRef = useRef("");
+  const publishThemeRef = useRef<(palette: GraphThemePalette) => void>(() => {});
+  publishThemeRef.current = (palette) => {
+    const key = `${palette.selected}\n${palette.depth.join("\n")}`;
+    if (key === publishedThemeRef.current) return;
+    publishedThemeRef.current = key;
+    setDepthColors(palette.depth);
+    setAccentColor(palette.selected);
+  };
 
   function positionInfo() {
     if (infoExitingRef.current) return;
@@ -296,6 +307,12 @@ export function GraphView({
     };
   }, [info]);
 
+  useLayoutEffect(() => {
+    const host = wrapRef.current;
+    if (host === null) return;
+    publishThemeRef.current(graphThemePalette(readGraphThemeTokens(host)));
+  }, []);
+
   useEffect(() => {
     setInfo(null);
     infoAnchorRef.current = null;
@@ -309,24 +326,28 @@ export function GraphView({
     const layout = createGraphLayout(nodes, edges);
     const connections = countGraphConnections(layout.edges, nodes.length);
     const indices = new Map(nodes.map((node, index) => [node.path, index]));
-    // 작은 점 이미지를 한 번 만들어 재사용해 매 프레임 흐림 필터를 계산하지 않는다.
+    // 작은 점 이미지를 테마 램프마다 다시 만들어 매 프레임 흐림 필터를 계산하지 않는다.
     const depthSprites = new Map<string, { image: HTMLCanvasElement; size: number }>();
-    for (const { color, blur } of GRAPH_DEPTH_APPEARANCES) {
-      if (blur === 0) continue;
-      const outerRadius = 2 + blur * 2;
-      const image = document.createElement("canvas");
-      image.width = image.height = Math.ceil((outerRadius + 1) * 4);
-      const sprite = image.getContext("2d");
-      if (sprite === null) continue;
-      const size = image.width / 2;
-      sprite.setTransform(2, 0, 0, 2, image.width / 2, image.height / 2);
-      const gradient = sprite.createRadialGradient(0, 0, 2 - blur, 0, 0, outerRadius);
-      gradient.addColorStop(0, color);
-      gradient.addColorStop(1 / 3, `${color}80`);
-      gradient.addColorStop(1, `${color}00`);
-      sprite.fillStyle = gradient;
-      sprite.fillRect(-size / 2, -size / 2, size, size);
-      depthSprites.set(color, { image, size });
+    let palette: GraphThemePalette = graphThemePalette(GRAPH_THEME_FALLBACK);
+    function rebuildSprites() {
+      depthSprites.clear();
+      for (const { color, blur } of graphDepthSamples(palette.depth)) {
+        if (blur === 0 || !color.startsWith("#") || color.length !== 7) continue;
+        const outerRadius = 2 + blur * 2;
+        const image = document.createElement("canvas");
+        image.width = image.height = Math.ceil((outerRadius + 1) * 4);
+        const sprite = image.getContext("2d");
+        if (sprite === null) continue;
+        const size = image.width / 2;
+        sprite.setTransform(2, 0, 0, 2, image.width / 2, image.height / 2);
+        const gradient = sprite.createRadialGradient(0, 0, 2 - blur, 0, 0, outerRadius);
+        gradient.addColorStop(0, color);
+        gradient.addColorStop(1 / 3, `${color}80`);
+        gradient.addColorStop(1, `${color}00`);
+        sprite.fillStyle = gradient;
+        sprite.fillRect(-size / 2, -size / 2, size, size);
+        depthSprites.set(color, { image, size });
+      }
     }
     const motionPreference = window.matchMedia("(prefers-reduced-motion: reduce)");
     const edgeBudget = largeHit ? 1800 : 4000;
@@ -376,7 +397,7 @@ export function GraphView({
       started: number;
     } | null = null;
     let pinch: { distance: number; center: Point; scale: number; x: number; y: number } | null = null;
-    let palette = { edge: "#888", ink: "#111", surface: "#fff" };
+    let themeKey = "";
 
     function interruptFocus() {
       focusFrom = null;
@@ -445,13 +466,14 @@ export function GraphView({
       hoverEdges = [];
     }
     function readPalette() {
-      const style = getComputedStyle(canvas!);
-      const color = (name: string, fallback: string) => style.getPropertyValue(name).trim() || fallback;
-      palette = {
-        edge: color("--border", "#888"),
-        ink: color("--foreground", "#111"),
-        surface: color("--popover", color("--background", "#fff")),
-      };
+      if (disposed) return;
+      const next = graphThemePalette(readGraphThemeTokens(wrap!));
+      const key = `${next.canvas}|${next.edge}|${next.ink}|${next.surface}|${next.selected}|${next.depth.join(",")}`;
+      if (key === themeKey) return;
+      themeKey = key;
+      palette = next;
+      rebuildSprites();
+      publishThemeRef.current(next);
       requestDraw();
     }
     function resize() {
@@ -520,7 +542,7 @@ export function GraphView({
         if (disposed || selected !== index || infoIndex !== index) return;
         const point = projected[index];
         if (point) infoAnchorRef.current = { ...point, radius: radius(index) };
-        setInfo({ ...nodes[index], connections: connections[index], color: SELECTED_NODE_COLOR });
+        setInfo({ ...nodes[index], connections: connections[index] });
         requestDraw();
       }, wait);
       requestDraw();
@@ -579,7 +601,7 @@ export function GraphView({
       const selectedAnimating = selected >= 0 && focusedEdges.length > 0 && !selection.showTooltip;
       if (selected >= 0 && focusedEdges.length > 0) {
         ctx!.globalAlpha = 0.65;
-        ctx!.strokeStyle = GRAPH_DEPTH_COLORS[8];
+        ctx!.strokeStyle = palette.selected;
         ctx!.beginPath();
         for (const edge of focusedEdges) line(edge, selected, selection.edgeProgress);
         ctx!.stroke();
@@ -590,6 +612,7 @@ export function GraphView({
         // 기존 선택 간선은 유지하고 hover한 점에서 이웃 쪽으로 강조를 덧그린다.
         const progress = 1 - (1 - hoverProgress) ** 3;
         ctx!.globalAlpha = 0.65;
+        ctx!.strokeStyle = palette.selected;
         ctx!.beginPath();
         for (const edge of hoverEdges) line(edge, hover, progress);
         ctx!.stroke();
@@ -597,14 +620,14 @@ export function GraphView({
       for (const index of order) {
         const point = projected[index];
         if (!point.visible) continue;
-        const appearance = graphDepthAppearance(point.depth);
+        const appearance = graphDepthAppearance(point.depth, palette.depth);
         const emphasis = graphNodeEmphasis({
           index,
           selected,
           marked: highlights.has(index),
           focused: index === active || index === hover || closest.includes(index),
           appearance,
-          selectedColor: SELECTED_NODE_COLOR,
+          selectedColor: palette.selected,
         });
         if (emphasis.glow) {
           const nodeRadius = radius(index);
@@ -683,7 +706,7 @@ export function GraphView({
         if (!labelStarts.has(index)) labelStarts.set(index, time);
         const reveal = graphCalloutReveal(time - labelStarts.get(index)!, motionPreference.matches);
         if (!reveal.done) labelsAnimating = true;
-        const appearance = graphDepthAppearance(point.depth);
+        const appearance = graphDepthAppearance(point.depth, palette.depth);
         const opacity = index === active || index === hover ? 1 : appearance.opacity;
         const visibleLeader = graphCalloutPrefix(leader, reveal.lineProgress);
         ctx!.strokeStyle = appearance.color;
@@ -968,8 +991,8 @@ export function GraphView({
         propsRef.current.onOpen(path);
       },
     };
-    resize();
     readPalette();
+    resize();
     focusPath(propsRef.current.activePath);
     const resizeObserver = new ResizeObserver(resize);
     resizeObserver.observe(wrap);
@@ -978,8 +1001,15 @@ export function GraphView({
       if (inViewport) requestDraw(); else pause();
     });
     intersectionObserver.observe(canvas);
-    const themeObserver = new MutationObserver(readPalette);
+    const themeObserver = new MutationObserver(() => {
+      const style = document.getElementById(THEME_STYLE_ID);
+      if (style) themeObserver.observe(style, { childList: true, characterData: true, subtree: true });
+      readPalette();
+    });
     themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["class", "style", "data-theme"] });
+    themeObserver.observe(document.head, { childList: true });
+    const themeStyle = document.getElementById(THEME_STYLE_ID);
+    if (themeStyle) themeObserver.observe(themeStyle, { childList: true, characterData: true, subtree: true });
     const colorScheme = window.matchMedia("(prefers-color-scheme: dark)");
     colorScheme.addEventListener("change", readPalette);
     motionPreference.addEventListener("change", requestDraw);
@@ -1034,12 +1064,12 @@ export function GraphView({
             aria-label={variant === "local" ? "로컬 그래프" : "3D 노트 그래프"}
             aria-describedby={helpId}
             tabIndex={0}
-            className="absolute inset-0 block size-full cursor-grab touch-none outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring active:cursor-grabbing"
+            className="absolute inset-0 block size-full cursor-grab bg-background touch-none outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring active:cursor-grabbing"
           />
         )}
         {info !== null && (
           <svg className="pointer-events-none absolute inset-0 z-10 size-full overflow-hidden" aria-hidden="true">
-            <polyline ref={infoLeaderRef} pathLength={1} strokeDasharray={1} strokeDashoffset={1} fill="none" stroke={info.color} strokeOpacity={0.7} strokeWidth={1} strokeLinecap="round" strokeLinejoin="round" />
+            <polyline ref={infoLeaderRef} pathLength={1} strokeDasharray={1} strokeDashoffset={1} fill="none" stroke={accentColor} strokeOpacity={0.7} strokeWidth={1} strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         )}
         {nodes.length > 0 && variant !== "local" ? (
@@ -1064,9 +1094,9 @@ export function GraphView({
                 <Button type="button" variant="ghost" size="icon" className={cn("size-6", COARSE_POINTER_ICON_BUTTON_GROW_CLASS)} aria-label="축소" onClick={() => controlsRef.current?.zoom(1 / 1.2)}>−</Button>
               </div>
               <span>{nodes.length}개</span>
-              <span className="inline-flex items-center gap-1" aria-label="Far is pale blue, near is deep blue">
+              <span className="inline-flex items-center gap-1" aria-label="먼 노트는 배경에 가깝고, 가까운 노트는 테마 강조색">
                 far
-                <span className="inline-block h-1.5 w-10 rounded-full" style={{ background: `linear-gradient(to right, ${GRAPH_DEPTH_COLORS.join(", ")})` }} />
+                <span className="inline-block h-1.5 w-10 rounded-full" style={{ background: `linear-gradient(to right, ${depthColors.join(", ")})` }} />
                 near
               </span>
             </div>
@@ -1096,7 +1126,7 @@ export function GraphView({
               role="dialog"
               aria-label="노트 정보"
               tabIndex={-1}
-              style={{ width: "min(15rem, calc(100% - 16px))", maxWidth: "calc(100% - 16px)", borderColor: `${info.color}73`, opacity: 0, pointerEvents: "none" }}
+              style={{ width: "min(15rem, calc(100% - 16px))", maxWidth: "calc(100% - 16px)", borderColor: `${accentColor}73`, opacity: 0, pointerEvents: "none" }}
               className="absolute z-10 overflow-auto rounded border bg-popover p-2 text-popover-foreground shadow-sm outline-none"
               onPointerDown={(event) => event.stopPropagation()}
               onKeyDown={(event) => {
@@ -1114,7 +1144,7 @@ export function GraphView({
               <div className="mt-2 flex items-center justify-between gap-2">
                 <p className={cn("text-muted-foreground", COARSE_POINTER_META_TEXT_CLASS)}>연결된 노트 {info.connections}개</p>
                 {variant === "local" ? null : (
-                  <Button type="button" variant="ghost" size="sm" className={cn("h-7 shrink-0 px-2 in-data-[phone-metrics]:h-9", COARSE_POINTER_TEXT_SM_CLASS)} style={{ color: info.color }} onClick={() => controlsRef.current?.openFile()}>파일 열기</Button>
+                  <Button type="button" variant="ghost" size="sm" className={cn("h-7 shrink-0 px-2 in-data-[phone-metrics]:h-9", COARSE_POINTER_TEXT_SM_CLASS)} style={{ color: accentColor }} onClick={() => controlsRef.current?.openFile()}>파일 열기</Button>
                 )}
               </div>
             </div>
