@@ -18,6 +18,13 @@ describe("parseCssColor", () => {
     assert.equal(rgbToHex(parseCssColor("rgb(100% 0% 0%)")!), "#ff0000");
     assert.equal(parseCssColor("rgba(76, 79, 105, 0.2)")?.a, 0.2);
     assert.equal(rgbToHex(parseCssColor("color(srgb 1 0 0)")!), "#ff0000");
+    assert.equal(rgbToHex(parseCssColor("oklch(1 0 0)")!), "#ffffff");
+    assert.equal(rgbToHex(parseCssColor("oklch(0 0 0)")!), "#000000");
+    assert.equal(rgbToHex(parseCssColor("oklch(100% 0 0)")!), "#ffffff");
+    const latteBorder = parseCssColor("oklch(0.884634 0.0109597 279.352)");
+    const mochaBorder = parseCssColor("oklch(0.366207 0.0327175 281.682)");
+    assert.ok(latteBorder && mochaBorder);
+    assert.ok(latteBorder.r + latteBorder.g + latteBorder.b > mochaBorder.r + mochaBorder.g + mochaBorder.b + 200);
     assert.equal(parseCssColor("var(--primary)"), null);
     assert.equal(parseCssColor(""), null);
   });
@@ -49,7 +56,16 @@ describe("graphThemePalette", () => {
     assert.equal(light.canvas, "#eff1f5");
     assert.equal(dark.canvas, "#1e1e2e");
     assert.equal(light.surface, "#eff1f5");
-    assert.equal(light.edge, "rgba(76, 79, 105, 0.2)");
+    assert.notEqual(light.edge, dark.edge);
+    assert.notEqual(light.edge, "#888888");
+    assert.ok(distance(light.edge, light.canvas) > 40);
+    assert.ok(distance(dark.edge, dark.canvas) > 40);
+    const lightEdge = parseCssColor(light.edge)!;
+    const darkEdge = parseCssColor(dark.edge)!;
+    const lightCanvas = parseCssColor(light.canvas)!;
+    const darkCanvas = parseCssColor(dark.canvas)!;
+    assert.ok(lightEdge.r + lightEdge.g + lightEdge.b < lightCanvas.r + lightCanvas.g + lightCanvas.b);
+    assert.ok(darkEdge.r + darkEdge.g + darkEdge.b > darkCanvas.r + darkCanvas.g + darkCanvas.b);
     assert.equal(dark.ink, "#cdd6f4");
     assert.ok(distance(light.depth[0], light.canvas) < distance(light.depth.at(-1)!, light.canvas));
     assert.ok(distance(dark.depth[0], dark.canvas) < distance(dark.depth.at(-1)!, dark.canvas));
@@ -57,6 +73,31 @@ describe("graphThemePalette", () => {
     assert.notEqual(light.selected, "#8b5cf6");
     assert.notEqual(dark.depth.at(-1), "#1f58c1");
     assert.notEqual(light.depth[0], "#739ce8");
+  });
+
+  it("follows an oklch theme's light and dark modes", () => {
+    const light = graphThemePalette({
+      canvas: "oklch(1 0 0)",
+      node: "oklch(0.27 0 0)",
+      highlight: "oklch(0.45 0.2 250)",
+      ink: "oklch(0.3211 0 0)",
+      border: "",
+      surface: "",
+    });
+    const dark = graphThemePalette({
+      canvas: "oklch(0.195 0 0)",
+      node: "oklch(0.82 0 0)",
+      highlight: "oklch(0.75 0.12 250)",
+      ink: "oklch(0.81 0 0)",
+      border: "",
+      surface: "",
+    });
+    assert.equal(light.canvas, "#ffffff");
+    assert.notEqual(light.canvas, dark.canvas);
+    assert.notEqual(light.depth.at(-1), dark.depth.at(-1));
+    assert.notEqual(light.edge, dark.edge);
+    assert.notEqual(light.selected, dark.selected);
+    assert.ok(distance(dark.canvas, "#ffffff") > 80);
   });
 
   it("uses ink for the selection when the highlight is the same color as the nodes", () => {
@@ -84,7 +125,7 @@ describe("graphThemePalette", () => {
     });
     assert.equal(palette.canvas, "#ffffff");
     assert.equal(palette.depth.at(-1), "#111111");
-    assert.equal(palette.edge, "#888888");
+    assert.notEqual(palette.edge, palette.canvas);
     assert.equal(palette.surface, "#ffffff");
     assert.notEqual(palette.selected, "#111111");
     assert.equal(mixRgb({ r: 0, g: 0, b: 0, a: 1 }, { r: 10, g: 0, b: 0, a: 1 }, 0).r, 0);

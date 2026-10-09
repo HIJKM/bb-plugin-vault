@@ -591,7 +591,7 @@ export function GraphView({
         ctx!.moveTo(from.x, from.y);
         ctx!.lineTo(from.x + (to.x - from.x) * progress, from.y + (to.y - from.y) * progress);
       }
-      ctx!.globalAlpha = selected >= 0 ? 0.12 : 0.45;
+      ctx!.globalAlpha = selected >= 0 ? 0.18 : 0.72;
       ctx!.strokeStyle = palette.edge;
       ctx!.lineWidth = 1;
       ctx!.beginPath();
