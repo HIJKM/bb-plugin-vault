@@ -77,55 +77,13 @@ export function Toolbar({
         onSelectVault={onSelectVault}
       />
 
-      {onOpenGraph ? (
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className={ACTION_BUTTON_CLASS}
-          aria-label="그래프 보기"
-          data-testid="vault-graph"
-          onClick={onOpenGraph}
-        >
-          <Icon name="GitBranch" className="size-3.5" aria-hidden="true" />
-        </Button>
-      ) : null}
-
-      {onToggleGraph ? (
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className={ACTION_BUTTON_CLASS}
-          aria-label="그래프"
-          aria-pressed={graphOpen}
-          data-testid="vault-column-graph"
-          onClick={onToggleGraph}
-        >
-          <Icon name="GitBranch" className="size-3.5" aria-hidden="true" />
-        </Button>
-      ) : null}
-
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        className={ACTION_BUTTON_CLASS}
-        aria-label="숨김 파일 표시"
-        aria-pressed={showHidden}
-        data-testid="vault-show-hidden"
-        onClick={() => setShowHidden(!showHidden)}
-      >
-        <Icon name={showHidden ? "Eye" : "EyeOff"} className="size-3.5" aria-hidden="true" />
-      </Button>
-
       <div
         data-testid={SEARCH_SHELL}
         title={showSearch ? undefined : "필터검색 (Ctrl+F)"}
         className={cn(
-          "relative h-7 max-w-full min-w-0 shrink-0 overflow-hidden transition-[width] duration-200 ease-out motion-reduce:transition-none",
+          "relative h-7 max-w-48 min-w-0 shrink-0 overflow-hidden transition-[width] duration-200 ease-out motion-reduce:transition-none",
           "in-data-[phone-metrics]:h-8",
-          showSearch ? "w-80" : "w-7 in-data-[phone-metrics]:w-8",
+          showSearch ? "w-48" : "w-7 in-data-[phone-metrics]:w-8",
         )}
       >
         <input
@@ -193,6 +151,48 @@ export function Toolbar({
           <Icon name="Search" className="size-3.5" aria-hidden="true" />
         </Button>
       </div>
+
+      {onOpenGraph ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className={ACTION_BUTTON_CLASS}
+          aria-label="그래프 보기"
+          data-testid="vault-graph"
+          onClick={onOpenGraph}
+        >
+          <Icon name="GitBranch" className="size-3.5" aria-hidden="true" />
+        </Button>
+      ) : null}
+
+      {onToggleGraph ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className={ACTION_BUTTON_CLASS}
+          aria-label="그래프"
+          aria-pressed={graphOpen}
+          data-testid="vault-column-graph"
+          onClick={onToggleGraph}
+        >
+          <Icon name="GitBranch" className="size-3.5" aria-hidden="true" />
+        </Button>
+      ) : null}
+
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        className={ACTION_BUTTON_CLASS}
+        aria-label="숨김 파일 표시"
+        aria-pressed={showHidden}
+        data-testid="vault-show-hidden"
+        onClick={() => setShowHidden(!showHidden)}
+      >
+        <Icon name={showHidden ? "Eye" : "EyeOff"} className="size-3.5" aria-hidden="true" />
+      </Button>
     </div>
   );
 }
