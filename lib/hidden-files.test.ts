@@ -72,10 +72,10 @@ describe("hidden vault names", () => {
     const graph = toolbar.indexOf('data-testid="vault-graph"');
     const hidden = toolbar.indexOf('data-testid="vault-show-hidden"');
     assert.ok(path > 0 && shell > path && graph > shell && hidden > graph);
-    assert.match(toolbar, /max-w-48 min-w-0 shrink-0 overflow-hidden transition-\[width\] duration-200 ease-out/);
-    assert.match(toolbar, /showSearch \? "w-48" : "w-7 in-data-\[phone-metrics\]:w-8"/);
+    assert.match(toolbar, /grid-cols-\[minmax\(0,max-content\)_minmax\(1\.75rem,1fr\)_auto\]/);
+    assert.match(toolbar, /showSearch \? "w-full max-w-48" : "w-7 shrink-0 in-data-\[phone-metrics\]:w-8"/);
     assert.match(toolbar, /absolute top-0 right-0/);
-    assert.doesNotMatch(toolbar, /w-80|max-w-full|w-full|calc\(100%/);
+    assert.doesNotMatch(toolbar, /w-80|max-w-full|calc\(100%/);
     assert.doesNotMatch(toolbar, /vault-search-popover/);
     assert.doesNotMatch(toolbar, /createPortal/);
   });

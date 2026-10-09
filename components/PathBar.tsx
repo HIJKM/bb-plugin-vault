@@ -10,7 +10,7 @@ export interface PathBarProps {
 export function PathBar({ rootLabel, vaults, vaultId, onSelectVault }: PathBarProps) {
   return (
     <div
-      className="relative flex min-w-0 flex-1 items-center"
+      className="relative flex min-w-0 items-center overflow-hidden"
       data-testid="vault-path-bar"
       title={rootLabel}
     >

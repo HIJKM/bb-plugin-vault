@@ -65,7 +65,7 @@ export function Toolbar({
     <div
       data-testid="vault-toolbar"
       className={cn(
-        "relative flex shrink-0 items-center gap-0.5 border-b border-border px-1.5",
+        "relative grid shrink-0 grid-cols-[minmax(0,max-content)_minmax(1.75rem,1fr)_auto] items-center gap-0.5 border-b border-border px-1.5",
         COARSE_POINTER_HEADER_BAR_CLASS,
         className,
       )}
@@ -77,122 +77,126 @@ export function Toolbar({
         onSelectVault={onSelectVault}
       />
 
-      <div
-        data-testid={SEARCH_SHELL}
-        title={showSearch ? undefined : "필터검색 (Ctrl+F)"}
-        className={cn(
-          "relative h-7 max-w-48 min-w-0 shrink-0 overflow-hidden transition-[width] duration-200 ease-out motion-reduce:transition-none",
-          "in-data-[phone-metrics]:h-8",
-          showSearch ? "w-48" : "w-7 in-data-[phone-metrics]:w-8",
-        )}
-      >
-        <input
-          ref={searchInputRef}
-          type="search"
-          value={query}
-          data-testid="vault-search"
-          aria-label="필터검색"
-          aria-hidden={showSearch ? undefined : true}
-          placeholder="필터"
-          autoCapitalize="off"
-          autoCorrect="off"
-          spellCheck={false}
-          tabIndex={showSearch ? 0 : -1}
+      <div className="flex min-w-0 justify-end">
+        <div
+          data-testid={SEARCH_SHELL}
+          title={showSearch ? undefined : "필터검색 (Ctrl+F)"}
           className={cn(
-            "absolute inset-0 rounded-md border pr-8 pl-2 text-foreground placeholder:text-muted-foreground",
-            "in-data-[phone-metrics]:pr-9",
-            COARSE_POINTER_TEXT_SM_CLASS,
-            "focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none",
-            "[&::-webkit-search-cancel-button]:hidden",
-            showSearch
-              ? "border-border bg-background"
-              : "pointer-events-none border-transparent bg-transparent",
+            "relative h-7 min-w-0 overflow-hidden transition-[width] duration-200 ease-out motion-reduce:transition-none",
+            "in-data-[phone-metrics]:h-8",
+            showSearch ? "w-full max-w-48" : "w-7 shrink-0 in-data-[phone-metrics]:w-8",
           )}
-          onChange={(event) => onQueryChange(event.target.value)}
-          onBlur={(event) => {
-            if (query !== "") return;
-            const next = event.relatedTarget;
-            const shell = event.currentTarget.closest(`[data-testid='${SEARCH_SHELL}']`);
-            if (next instanceof Node && shell?.contains(next)) return;
-            setFilterOpen(false);
-          }}
-          onKeyDown={(event) => {
-            if (event.key !== "Escape") return;
-            event.stopPropagation();
-            if (query !== "") {
-              event.preventDefault();
-              onQueryChange("");
-              return;
-            }
-            setFilterOpen(false);
-          }}
-        />
-        <Button
-          ref={searchButtonRef}
-          type="button"
-          variant="ghost"
-          size="sm"
-          className={cn("absolute top-0 right-0", ACTION_BUTTON_CLASS)}
-          aria-label="필터검색"
-          aria-pressed={showSearch}
-          aria-expanded={showSearch}
-          aria-hidden={showSearch ? true : undefined}
-          tabIndex={showSearch ? -1 : 0}
-          data-testid="vault-filter"
-          onMouseDown={(event) => event.preventDefault()}
-          onClick={() => {
-            if (showSearch) {
-              searchInputRef.current?.focus();
-              return;
-            }
-            setFilterOpen(true);
-          }}
         >
-          <Icon name="Search" className="size-3.5" aria-hidden="true" />
-        </Button>
+          <input
+            ref={searchInputRef}
+            type="search"
+            value={query}
+            data-testid="vault-search"
+            aria-label="필터검색"
+            aria-hidden={showSearch ? undefined : true}
+            placeholder="필터"
+            autoCapitalize="off"
+            autoCorrect="off"
+            spellCheck={false}
+            tabIndex={showSearch ? 0 : -1}
+            className={cn(
+              "absolute inset-0 rounded-md border pr-8 pl-2 text-foreground placeholder:text-muted-foreground",
+              "in-data-[phone-metrics]:pr-9",
+              COARSE_POINTER_TEXT_SM_CLASS,
+              "focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none",
+              "[&::-webkit-search-cancel-button]:hidden",
+              showSearch
+                ? "border-border bg-background"
+                : "pointer-events-none border-transparent bg-transparent",
+            )}
+            onChange={(event) => onQueryChange(event.target.value)}
+            onBlur={(event) => {
+              if (query !== "") return;
+              const next = event.relatedTarget;
+              const shell = event.currentTarget.closest(`[data-testid='${SEARCH_SHELL}']`);
+              if (next instanceof Node && shell?.contains(next)) return;
+              setFilterOpen(false);
+            }}
+            onKeyDown={(event) => {
+              if (event.key !== "Escape") return;
+              event.stopPropagation();
+              if (query !== "") {
+                event.preventDefault();
+                onQueryChange("");
+                return;
+              }
+              setFilterOpen(false);
+            }}
+          />
+          <Button
+            ref={searchButtonRef}
+            type="button"
+            variant="ghost"
+            size="sm"
+            className={cn("absolute top-0 right-0", ACTION_BUTTON_CLASS)}
+            aria-label="필터검색"
+            aria-pressed={showSearch}
+            aria-expanded={showSearch}
+            aria-hidden={showSearch ? true : undefined}
+            tabIndex={showSearch ? -1 : 0}
+            data-testid="vault-filter"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => {
+              if (showSearch) {
+                searchInputRef.current?.focus();
+                return;
+              }
+              setFilterOpen(true);
+            }}
+          >
+            <Icon name="Search" className="size-3.5" aria-hidden="true" />
+          </Button>
+        </div>
       </div>
 
-      {onOpenGraph ? (
+      <div className="flex shrink-0 items-center gap-0.5">
+        {onOpenGraph ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className={ACTION_BUTTON_CLASS}
+            aria-label="그래프 보기"
+            data-testid="vault-graph"
+            onClick={onOpenGraph}
+          >
+            <Icon name="GitBranch" className="size-3.5" aria-hidden="true" />
+          </Button>
+        ) : null}
+
+        {onToggleGraph ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className={ACTION_BUTTON_CLASS}
+            aria-label="그래프"
+            aria-pressed={graphOpen}
+            data-testid="vault-column-graph"
+            onClick={onToggleGraph}
+          >
+            <Icon name="GitBranch" className="size-3.5" aria-hidden="true" />
+          </Button>
+        ) : null}
+
         <Button
           type="button"
           variant="ghost"
           size="sm"
           className={ACTION_BUTTON_CLASS}
-          aria-label="그래프 보기"
-          data-testid="vault-graph"
-          onClick={onOpenGraph}
+          aria-label="숨김 파일 표시"
+          aria-pressed={showHidden}
+          data-testid="vault-show-hidden"
+          onClick={() => setShowHidden(!showHidden)}
         >
-          <Icon name="GitBranch" className="size-3.5" aria-hidden="true" />
+          <Icon name={showHidden ? "Eye" : "EyeOff"} className="size-3.5" aria-hidden="true" />
         </Button>
-      ) : null}
-
-      {onToggleGraph ? (
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className={ACTION_BUTTON_CLASS}
-          aria-label="그래프"
-          aria-pressed={graphOpen}
-          data-testid="vault-column-graph"
-          onClick={onToggleGraph}
-        >
-          <Icon name="GitBranch" className="size-3.5" aria-hidden="true" />
-        </Button>
-      ) : null}
-
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        className={ACTION_BUTTON_CLASS}
-        aria-label="숨김 파일 표시"
-        aria-pressed={showHidden}
-        data-testid="vault-show-hidden"
-        onClick={() => setShowHidden(!showHidden)}
-      >
-        <Icon name={showHidden ? "Eye" : "EyeOff"} className="size-3.5" aria-hidden="true" />
-      </Button>
+      </div>
     </div>
   );
 }
