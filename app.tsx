@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentType, type KeyboardEvent, type MouseEvent, type PointerEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentType, type KeyboardEvent, type MouseEvent, type PointerEvent, type ReactNode } from "react";
 import {
   Markdown,
   definePluginApp,
@@ -38,6 +38,7 @@ import {
 } from "@/components/ui/coarse-pointer-sizing";
 import { consumeAgentRoute, consumeGraphOpen } from "@/lib/agent-entry";
 import { isImageFileName } from "@/lib/image-file";
+import { queryBoldSpans } from "@/lib/query-highlight";
 import { cn } from "@/lib/utils";
 import { publishVaults, rememberedVaults, subscribeVaults, type Vault } from "@/lib/vault-list";
 import { parseFrontmatterFields, splitMarkdownFrontmatter, type FrontmatterField } from "@/lib/frontmatter";
@@ -201,6 +202,14 @@ function fileLabel(pathOrName: string): string {
   const cut = pathOrName.lastIndexOf("/");
   const name = cut === -1 ? pathOrName : pathOrName.slice(cut + 1);
   return name.replace(/\.(md|markdown|html|htm|txt)$/iu, "");
+}
+
+function boldQuery(text: string, query: string): ReactNode {
+  const spans = queryBoldSpans(text, query);
+  if (!spans.some((span) => span.match)) return text;
+  return spans.map((span, index) => (
+    span.match ? <strong key={index} className="font-bold">{span.text}</strong> : span.text
+  ));
 }
 
 const rememberedIndex: Record<string, VaultIndex> = {};
@@ -911,7 +920,7 @@ function DocsReaderPanel({
                     className={COARSE_POINTER_TREE_ICON_CLASS}
                   />
                   <span className="min-w-0 flex-1 truncate">
-                    {item.kind === "file" ? fileLabel(item.name) : item.name}
+                    {boldQuery(item.kind === "file" ? fileLabel(item.name) : item.name, query)}
                   </span>
                 </button>
               </li>
