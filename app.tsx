@@ -50,6 +50,7 @@ import { listScrollKey, readListScroll, writeListScroll } from "@/lib/session-li
 import { THREAD_VAULT_ACTION_ID } from "@/lib/panel-open";
 import { readSessionRoute, writeSessionRoute } from "@/lib/session-route";
 import { rewriteVaultMarkdown } from "@/lib/vault-markdown";
+import { graphCornerCursor, graphCornerResize } from "@/lib/graph-corner";
 import type { GraphEdge, GraphNode } from "@/lib/note-graph";
 import { parseVaultLinkHref } from "@/lib/wiki-links";
 import type { rpcContract } from "./server";
@@ -319,6 +320,14 @@ function DocsReaderPanel({
   const [resizing, setResizing] = useState(false);
   const resizeDrag = useRef<{ startX: number; startWidth: number; max: number } | null>(null);
   const graphSplitDrag = useRef<{ startY: number; startSplit: number; height: number } | null>(null);
+  const cornerDrag = useRef<{
+    startX: number;
+    startY: number;
+    startWidth: number;
+    startSplit: number;
+    maxWidth: number;
+    height: number;
+  } | null>(null);
   const listScrollerRef = useRef<HTMLDivElement>(null);
 
   const applyListWidth = useCallback((width: number, max?: number) => {
@@ -405,6 +414,65 @@ function DocsReaderPanel({
     } else if (event.key === "End") {
       event.preventDefault();
       applyGraphSplit(GRAPH_SPLIT_MAX);
+    }
+  }
+
+  function onCornerPointerDown(event: PointerEvent<HTMLDivElement>) {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    const graphPane = event.currentTarget.parentElement;
+    const column = graphPane?.parentElement;
+    const card = column?.parentElement;
+    const panel = card?.parentElement?.parentElement;
+    const startWidth = card?.getBoundingClientRect().width ?? listWidth;
+    const maxWidth = panel ? panel.clientWidth - LIST_WIDTH_MIN : LIST_WIDTH_MAX;
+    const height = column?.getBoundingClientRect().height ?? 0;
+    cornerDrag.current = {
+      startX: event.clientX,
+      startY: event.clientY,
+      startWidth,
+      startSplit: graphSplit,
+      maxWidth,
+      height,
+    };
+    setResizing(true);
+  }
+
+  function onCornerPointerMove(event: PointerEvent<HTMLDivElement>) {
+    const drag = cornerDrag.current;
+    if (drag === null) return;
+    const next = graphCornerResize(drag, { x: event.clientX, y: event.clientY });
+    applyListWidth(next.width, drag.maxWidth);
+    applyGraphSplit(next.split);
+  }
+
+  function onCornerPointerUp(event: PointerEvent<HTMLDivElement>) {
+    if (cornerDrag.current === null) return;
+    cornerDrag.current = null;
+    setResizing(false);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  }
+
+  function onCornerKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    if (event.key === "ArrowLeft") {
+      event.preventDefault();
+      applyListWidth(listWidth - LIST_WIDTH_STEP);
+    } else if (event.key === "ArrowRight") {
+      event.preventDefault();
+      applyListWidth(listWidth + LIST_WIDTH_STEP);
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      applyGraphSplit(graphSplit + GRAPH_SPLIT_STEP);
+    } else if (event.key === "ArrowDown") {
+      event.preventDefault();
+      applyGraphSplit(graphSplit - GRAPH_SPLIT_STEP);
+    } else if (event.key === "Home") {
+      event.preventDefault();
+      applyListWidth(LIST_WIDTH_DEFAULT);
+      applyGraphSplit(GRAPH_SPLIT_DEFAULT);
     }
   }
 
@@ -1039,6 +1107,7 @@ function DocsReaderPanel({
         "relative flex h-full min-h-0 bg-background text-foreground",
         resizing ? "select-none" : "",
       )}
+      style={cornerDrag.current !== null ? { cursor: graphCornerCursor } : undefined}
     >
       {stacked ? (
         showList ? listPane : null
@@ -1075,7 +1144,9 @@ function DocsReaderPanel({
                   tabIndex={0}
                   className={cn(
                     "relative z-10 h-px shrink-0 cursor-row-resize touch-none before:absolute before:inset-x-0 before:-top-1.5 before:h-3 before:content-['']",
-                    resizing && graphSplitDrag.current !== null ? "bg-primary" : "bg-border",
+                    resizing && (graphSplitDrag.current !== null || cornerDrag.current !== null)
+                      ? "bg-primary"
+                      : "bg-border",
                   )}
                   onPointerDown={onGraphSplitPointerDown}
                   onPointerMove={onGraphSplitPointerMove}
@@ -1087,7 +1158,7 @@ function DocsReaderPanel({
               ) : null}
               {graphPeek ? (
                 <div
-                  className="flex min-h-0 flex-col"
+                  className="relative flex min-h-0 flex-col"
                   style={{ flexGrow: graphSplit, flexBasis: 0 }}
                   aria-label="그래프"
                 >
@@ -1106,6 +1177,28 @@ function DocsReaderPanel({
                       }}
                     />
                   )}
+                  <div
+                    data-testid="vault-graph-corner"
+                    role="separator"
+                    aria-label="그래프 크기"
+                    aria-orientation="horizontal"
+                    aria-valuemin={LIST_WIDTH_MIN}
+                    aria-valuemax={LIST_WIDTH_MAX}
+                    aria-valuenow={listWidth}
+                    aria-valuetext={`너비 ${listWidth}픽셀, 높이 ${Math.round(graphSplit * 100)}퍼센트`}
+                    tabIndex={0}
+                    className="absolute top-0 right-0 z-20 size-10 touch-none outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    style={{ cursor: graphCornerCursor }}
+                    onPointerDown={onCornerPointerDown}
+                    onPointerMove={onCornerPointerMove}
+                    onPointerUp={onCornerPointerUp}
+                    onPointerCancel={onCornerPointerUp}
+                    onDoubleClick={() => {
+                      applyListWidth(LIST_WIDTH_DEFAULT);
+                      applyGraphSplit(GRAPH_SPLIT_DEFAULT);
+                    }}
+                    onKeyDown={onCornerKeyDown}
+                  />
                 </div>
               ) : null}
             </div>
@@ -1119,7 +1212,7 @@ function DocsReaderPanel({
               tabIndex={listCollapsed ? -1 : 0}
               className={cn(
                 "absolute inset-y-0 right-0 z-10 w-px cursor-col-resize touch-none before:absolute before:inset-y-0 before:-left-1.5 before:w-3 before:content-['']",
-                resizing && resizeDrag.current !== null ? "bg-primary" : "bg-border",
+                resizing && (resizeDrag.current !== null || cornerDrag.current !== null) ? "bg-primary" : "bg-border",
               )}
               onPointerDown={onResizePointerDown}
               onPointerMove={onResizePointerMove}

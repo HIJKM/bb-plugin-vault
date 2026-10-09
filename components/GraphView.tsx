@@ -1058,7 +1058,7 @@ export function GraphView({
                 </Button>
               </div>
             ) : null}
-            <div className={cn("pointer-events-none absolute top-2 right-2 z-20 flex items-center gap-2 text-muted-foreground", COARSE_POINTER_META_TEXT_CLASS)}>
+            <div className={cn("pointer-events-none absolute top-2 z-20 flex items-center gap-2 text-muted-foreground", onFullscreen ? "right-12" : "right-2", COARSE_POINTER_META_TEXT_CLASS)}>
               <div className="pointer-events-auto flex items-center">
                 <Button type="button" variant="ghost" size="icon" className={cn("size-6", COARSE_POINTER_ICON_BUTTON_GROW_CLASS)} aria-label="확대" onClick={() => controlsRef.current?.zoom(1.2)}>+</Button>
                 <Button type="button" variant="ghost" size="icon" className={cn("size-6", COARSE_POINTER_ICON_BUTTON_GROW_CLASS)} aria-label="축소" onClick={() => controlsRef.current?.zoom(1 / 1.2)}>−</Button>
