@@ -19,7 +19,7 @@
    phone·desktop 캡처(없으면 없다고), 확인하지 못한 것.
 6. **커밋과 브랜치.** 검증된 기능 단위마다 묻지 않고 커밋한다. push는 사용자가
    「푸시해」라고 할 때만 한다. 일이 끝나면 main에 머지하고, 머지된 브랜치와 워크트리를
-   정리한다.
+   정리한다. 커밋 메시지는 commit-msg hook이 검사한다. `--no-verify`로 hook을 건너뛰지 않는다.
 7. **디자인은 kit의 디자인 문서를 따른다.** UI를 만들거나 고치기 전에
    `~/Foundry/bb-plugin/bb-plugin-kit/docs/design.md`를 읽는다. 색은 BB 테마 토큰만 쓰고
    색값(`#hex`, `oklch(...)`)을 직접 넣지 않는다. 모션은 kit의 `motion/`을 복사해 쓴다.
@@ -44,7 +44,7 @@
 | 3 검색 | 없음 (예정: 공유 검색 모듈과 테스트) |
 | 4 navPanel | 없음 |
 | 5 화면 | 없음 (예정: `verify-bb-plugin`) |
-| 6 커밋 | 없음 (예정: commit-msg hook) |
+| 6 커밋 | commit-msg hook: 형식·tag·명사 끝 검사. 원본 `~/Systems/registry-pool/scripts/git-hooks`, 연결은 kit `npm run sync-agents` |
 | 7 디자인 | 없음 (예정: 직접 넣은 색값 검사, 모션 복사본 해시 검사) |
 <!-- bb-plugin-kit:common end -->
 
